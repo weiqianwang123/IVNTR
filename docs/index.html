@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="description"
+        content="Advancing NeSy AI with Dynamic Urban Simulation">
+  <meta name="keywords" content="NeSy AI, Compositional Generalizaion, Abstract Reasoning">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LogiCity</title>
+
+  <link rel="icon" type="image/png" href="./static/images/airlab.png"> 
+  <link href="https://fonts.googleapis.com/css?family=Google+Sans|Noto+Sans|Castoro"
+        rel="stylesheet">
+
+  <link rel="stylesheet" href="./static/css/bulma.min.css">
+  <link rel="stylesheet" href="./static/css/bulma-carousel.min.css">
+  <link rel="stylesheet" href="./static/css/bulma-slider.min.css">
+  <link rel="stylesheet" href="./static/css/fontawesome.all.min.css">
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
+  <link rel="stylesheet" href="./static/css/index.css">
+  <link rel="icon" href="./static/images/airlab.png">
+
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+  <script defer src="./static/js/fontawesome.all.min.js"></script>
+  <script src="./static/js/bulma-carousel.min.js"></script>
+  <script src="./static/js/bulma-slider.min.js"></script>
+  <script src="./static/js/index.js"></script>
+</head>
+<body>
+
+<nav class="navbar" role="navigation" aria-label="main navigation">
+  <div class="navbar-brand">
+    <a role="button" class="navbar-burger" aria-label="menu" aria-expanded="false">
+      <span aria-hidden="true"></span>
+      <span aria-hidden="true"></span>
+      <span aria-hidden="true"></span>
+    </a>
+  </div>
+  <div class="navbar-menu">
+    <div class="navbar-start" style="flex-grow: 1; justify-content: center;">
+      <a class="navbar-item" href="https://jaraxxus-me.github.io/">
+      <span class="icon">
+          <i class="fas fa-home"></i>
+      </span>
+      </a>
+
+      <div class="navbar-item has-dropdown is-hoverable">
+        <a class="navbar-link">
+          More Research
+        </a>
+        <div class="navbar-dropdown">
+          <a class="navbar-item" href="https://jaraxxus-me.github.io/LogiCity/">
+            LogiCity - NeurIPS 2024
+          </a>
+          <a class="navbar-item" href="https://jaraxxus-me.github.io/ECCV2022_AirDet">
+            AirDet - ECCV 2022
+          </a>
+          <a class="navbar-item" href="https://jaraxxus-me.github.io/ICCV2023_PVTpp">
+            PVT++ - ICCV 2023
+          </a>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</nav>
+
+
+<section class="hero">
+  <div class="hero-body">
+    <div class="container is-max-desktop">
+      <div class="columns is-centered">
+        <div class="column has-text-centered">
+          <img src="./static/images/title.png" width="300">
+          <h1 class="title is-2 publication-title">Bilevel Learning for Bilevel Planning</h1>
+          <div class="column is-full_width">
+            <h2 class="title is-3">Robotics: Science and Systems '25</h2>
+          </div>
+          <div class="is-size-5 publication-authors">
+            <span class="author-block">
+              <a href="https://jaraxxus-me.github.io/">Bowen Li</a><sup>1,2</sup>,</span>
+            <span class="author-block">
+              <a href="https://tomsilver.github.io/">Tom Silver</a><sup>3</sup>,</span>
+            <span class="author-block">
+              <a href="http://theairlab.org/team/sebastian/">Sebastian Scherer</a><sup>1,*</sup>
+            </span>
+            <span class="author-block">
+              <a href="https://scholar.google.com/citations?user=yZDEX68AAAAJ&hl=en">Alexander Gray</a><sup>2</sup>,
+            </span>
+          </div>
+
+          <div class="is-size-5 publication-authors">
+            <span class="author-block"><sup>1</sup>Carnegie Mellon University</span>,
+            <span class="author-block"><sup>2</sup>Centaur AI Institute</span>,
+            <span class="author-block"><sup>3</sup>Princeton University</span>,
+          </div>
+
+          <div class="column has-text-centered">
+            <div class="publication-links">
+              <!-- PDF Link. -->
+              <span class="link-block">
+                <a href="https://www.arxiv.org/abs/2502.08697"
+                   class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                      <i class="ai ai-arxiv"></i>
+                  </span>
+                  <span>arXiv</span>
+                </a>
+              </span>
+              <!-- Code Link. -->
+              <span class="link-block">
+                <a href="https://github.com/Jaraxxus-Me/IVNTR"
+                   class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                      <i class="fab fa-github"></i>
+                  </span>
+                  <span>Code</span>
+                  </a>
+              </span>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="hero teaser">
+  <div class="container is-max-desktop">
+    <div class="hero-body">
+      <div style="text-align:center;">
+        <iframe width="784" height="441" src="https://www.youtube.com/embed/a18hnDWMarc?si=LJDlbMFeykzBHawW" title="Intro to LogiCity" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+    </div>
+    <br>
+    <h2 class="subtitle has-text-centered">
+      <strong>LogiCity</strong> is a new simulator and benchmark for NeSy AI. It simulates dynamic urban environments with <strong>flexible</strong> <strong>abstractions</strong>.
+      It features <b>Inductive Abstract Reasoning</b>, where the most recent LLM (<b>GPT-4o</b>) falls behind human.
+    </h2>
+    <div class="hero-body">
+      <div style="text-align:center;">
+        <img src="static\images\teaser.png" style="width:80%; height:auto;">
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container is-max-desktop">
+        <!-- Paper video. -->
+        <!-- <div class="columns is-centered has-text-centered">
+          <div class="column is-four-fifths">
+            <h2 class="title is-3">Video</h2>
+            <div class="publication-video">
+              <iframe src="https://www.youtube.com/embed/V5hYTz5os0M?rel=0&amp;showinfo=0"
+                      frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+            </div>
+          </div>
+        </div> -->
+        <!--/ Paper video. -->
+      
+    <!-- <br> -->
+    <!-- Abstract. -->
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-four-fifths">
+        <h2 class="title is-3">Abstract</h2>
+        <div class="content has-text-justified">
+          <style>
+            .courier-abs {
+              font-family: "Courier New", Courier, monospace;
+              font-weight: bold;
+            }
+          </style>
+          <p>
+            Recent years have witnessed the rapid development of Neuro-Symbolic (NeSy) AI systems, which integrate symbolic reasoning into deep neural networks.
+            However, most existing benchmarks for NeSy AI fail to provide <b>long-horizon reasoning</b> task with <b>complex multi-agent interaction</b>.
+            Furthermore, they are usually constrained by <b>fixed and simplistic logical rules over limited entities</b>, making them inadequate for capturing real-world complexities.
+          </p>
+          <p>
+            To address these crucial gaps, we introduce LogiCity, the first simulator based on customizable first-order logic (FOL) for an urban-like environment with multiple dynamic agents.
+            LogiCity models diverse urban elements using semantic and spatial <b>concepts</b>, such as <span class="courier-abs">IsAmbulance(X)</span> and <span class="courier-abs">IsClose(X,Y)</span>.
+            These concepts are used to define FOL rules governing the behavior of various agents.
+            Since the concepts and rules are <strong>abstractions</strong>, they can be universally applied to cities with <strong>any agent compositions</strong>, facilitating the instantiation of diverse scenarios.
+            Besides, a key benefit of our LogiCity is its support for <strong>user-configurable abstractions</strong>, enabling customizable simulation complexities for logical reasoning.
+          </p>
+          <p>
+            To explore various aspects of NeSy AI, we introduces two tasks, one features long-horizon sequential decision-making, and the other focuses on one-step visual reasoning, varying in difficulty and agent behaviors.
+            Our extensive evaluation using LogiCity reveals the advantage of NeSy frameworks in <strong>abstract reasoning</strong>. 
+            Moreover, we highlight the significant challenges of handling more complex abstractions in long-horizon multi-agent reasoning scenarios or under high-dimensional, imbalanced data.
+            With the flexible design, various features, and newly raised challenges, we believe LogiCity represents a pivotal step for advancing the next generation of NeSy AI.
+          </p>
+        </div>
+      </div>
+    </div>
+    <!--/ Abstract. -->
+  </div>
+</section>
+
+<section class="section">
+  <div class="container is-max-desktop">
+    <!-- <br> -->
+    <!-- Abstract. -->
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-four-fifths">
+        <h2 class="title is-3">Contribution</h2>
+        <div class="content has-text-justified">
+          <li>
+            We propose a pioneer <strong>abstraction</strong>-based dynamic city simulator <b>LogiCity</b> for NeSy AI, which is <strong>flexible</strong> and scalable for various reasoning tasks.
+          <li>
+            We develop Sequential Decision Making and Visual Reasoning tasks in LogiCity to evaluate the compositional generalization capability of various models.
+          </li>
+          <li>
+            We conduct exhaustive experiments and demonstrate the advantages of NeSy AI in compositional generalization, while also revealing the new reasoning challenges introduced by LogiCity.
+          </li>
+        </div>
+      </div>
+    </div>
+    <!--/ Abstract. -->
+  </div>
+</section>
+
+<section class="section">
+  <div class="container is-max-desktop">
+    <!-- Method. -->
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-full_width">
+        <hr>
+        <h2 class="title is-3">Simulation Examples</h2>
+        <br>
+        <div class="content has-text-justified">
+          <style>
+            .courier-pre {
+              font-family: "Courier New", Courier, monospace;
+              font-weight: bold;
+              background-color: rgba(255, 170, 0, 0.429);
+              padding: 2px 4px;
+              border-radius: 4px;
+            }
+            .courier-op {
+              font-family: "Courier New", Courier, monospace;
+              font-weight: bold;
+              padding: 2px 4px;
+              border-radius: 4px;
+            }
+          </style>
+          <p>[1] An entity will <span class="courier-pre">Stop</span> if it is <span class="courier-pre">CollingClose</span> with another entity, <span class="courier-op">OR</span>,
+            if it is <span class="courier-pre">AtIntersection</span> with another entity <span class="courier-pre">InIntersection</span>, <span class="courier-op">OR</span>,
+            if it is <span class="courier-pre">AtIntersection</span> with another <span class="courier-pre">HigherPriority</span> entity <span class="courier-pre">AtIntersection</span>.
+          </p>
+          <video id="teaser1" controls style="flex: 50%; max-width: 100%;">
+            <source src="./static/images/1.mp4" type="video/mp4">
+          </video>
+        </div>
+
+        <div id="more-examples" style="display: none;">
+          <br>
+          <div class="content has-text-justified">
+            <p>[2] An entity will <span class="courier-pre">Slow</span> if it is <span class="courier-pre">Tiro</span> with another <span class="courier-pre">Pedestrian</span> entity <span class="courier-pre">NextTo</span> it.
+            </p>
+            <video id="teaser2" controls style="flex: 50%; max-width: 100%;">
+              <source src="./static/images/2.mp4" type="video/mp4">
+            </video>
+          </div>
+
+          <br>
+          <div class="content has-text-justified">
+            <p>[3] An entity will move <span class="courier-pre">Fast</span> if it is a <span class="courier-pre">HigherPriority</span> <span class="courier-pre">Reckless</span> entity with another <span class="courier-pre">Car</span> entity <span class="courier-pre">AtIntersection</span>.
+            </p>
+            <video id="teaser3" controls style="flex: 50%; max-width: 100%;">
+              <source src="./static/images/3.mp4" type="video/mp4">
+            </video>
+          </div>
+
+          <br>
+          <div class="content has-text-justified">
+            <p>[4] An entity will <span class="courier-pre">Slow</span> if it is a <span class="courier-pre">Police</span> entity with at least two other <span class="courier-pre">Young</span> entities <span class="courier-pre">NextTo</span> each other, <span class="courier-op">AND</span> one of them is <span class="courier-pre">NextTo</span> to it.
+            </p>
+            <video id="teaser4" controls style="flex: 50%; max-width: 100%;">
+              <source src="./static/images/4.mp4" type="video/mp4">
+            </video>
+          </div>
+        </div>
+
+        <br>
+        <div class="content has-text-centered">
+          <button class="button is-primary" onclick="showMore()">More</button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  function showMore() {
+    var moreExamples = document.getElementById('more-examples');
+    moreExamples.style.display = moreExamples.style.display === 'none' ? 'block' : 'none';
+  }
+</script>
+
+<section class="section">
+  <div class="container is-max-desktop">
+    <!-- Method. -->
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-full_width">
+        <hr>
+        <h2 class="title is-3">Simulation Rendering</h2>
+      <div class="hero-body">
+      <div style="text-align:center;">
+        <video id="teaser1" autoplay muted loop style="flex: 50%; max-width: 100%;">
+          <source src="./static/images/rendering.mp4" type="video/mp4">
+        </video>
+      </div>
+      <br>
+      <h2 class="subtitle has-text-centered">
+        By virtue of the foundamental generative models, LogiCity supports a diverse range of rendering styles.
+      </h2>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container is-max-desktop">
+    <!-- Method. -->
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-full_width">
+        <hr>
+        <h2 class="title is-3">Safe Path Following (SPF)</h2>
+        <br>
+        <div class="columns">
+          <div class="column custom-column-80 has-text-centered">
+            <p>
+              Safe Path Following (SPF) requires an algorithm to control an agent in LogiCity, navigating it to the goal while maximizing the trajectory reward.
+              Since the ego agent could meet with complex situations along the way and needs to smartly plan to maximize trajectory return, this task features <strong>long-horizon</strong> reasoning with <strong>multiple dynamic agents</strong>.
+            </p>
+            <br>
+            <p>
+              Note that SPF also features <strong>Different Train/Test Agent Sets</strong>.
+            </p>
+          </div>
+          <div class="column custom-column-20">
+            <figure class="image">
+              <img src="./static/images/spf.png" alt="Description of the image" style="width: 100%; height: auto;">
+            </figure>
+          </div>
+        </div>
+        
+        <div class="columns is-centered">
+          <div class="column is-full-width">
+            <br>
+            <h4 class="title is-4">Hard mode visualization</h4>
+            <p>
+              The FOL rule and a training example in the hard mode for the SPF task is shown below. 
+            </p>
+            <br>
+          </div>
+        </div>
+
+        <div class="columns">
+          <div class="column is-half">
+            <h5 class="title is-5">Clause Set</h5>
+            <pre id="short-rule" style="font-family: 'Monaco', monospace; overflow-x: auto; text-align: left; max-width: 100%; white-space: pre-wrap;">
+<code>Stop(X):- Not(IsAmbulance(X)), Not(IsOld(X)), IsAtInter(X), IsInInter(Y).
+Stop(X):- Not(IsAmbulance(X)), Not(IsOld(X)), IsAtInter(X), IsAtInter(Y), HigherPri(Y, X).
+...</code>
+            </pre>
+            <pre id="full-rule" style="display: none; font-family: 'Monaco', monospace; overflow-x: auto; text-align: left; max-width: 100%; white-space: pre-wrap;">
+<code>Stop(X):- Not(IsAmbulance(X)), Not(IsOld(X)), IsAtInter(X), IsInInter(Y).
+Stop(X):- Not(IsAmbulance(X)), Not(IsOld(X)), IsAtInter(X), IsAtInter(Y), HigherPri(Y, X).
+Stop(X):- Not(IsAmbulance(X)), Not(IsOld(X)), IsInInter(X), IsInInter(Y), IsAmbulance(Y).
+Stop(X):- Not(IsAmbulance(X)), Not(IsPolice(X)), IsCar(X), Not(IsInInter(X)), Not(IsAtInter(X)), LeftOf(Y, X), IsClose(Y, X), IsPolice(Y).
+Stop(X):- IsBus(X), Not(IsInInter(X)), Not(IsAtInter(X)), RightOf(Y, X), NextTo(Y, X), IsPedestrian(Y).
+Stop(X):- IsAmbulance(X), RightOf(Y, X), IsOld(Y).
+Stop(X):- Not(IsAmbulance(X)), Not(IsOld(X)), CollidingClose(X, Y).</code>
+            </pre>
+            <button id="toggle-button" onclick="toggleRule()">Extend Rule</button>
+          </div>
+          <div class="column is-half">
+            <h5 class="title is-5">Example training episode</h5>
+            <video controls autoplay muted loop style="width: 100%; height: auto;">
+              <source src="static/images/spf_train.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+          </div>
+        </div>
+
+        <div class="columns is-centered">
+          <div class="column is-full-width">
+            <h5 class="title is-5">Testing episode 1</h5>
+            <video controls autoplay muted loop style="width: 100%; height: auto;">
+              <source src="static/images/spf_test1.mp4" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+        
+            <div id="more-testing-episodes" style="display: none;">
+              <h5 class="title is-5">Testing episode 2</h5>
+              <video controls autoplay muted loop style="width: 100%; height: auto;">
+                <source src="static/images/spf_test2.mp4" type="video/mp4">
+                Your browser does not support the video tag.
+              </video>
+        
+              <h5 class="title is-5">Testing episode 3</h5>
+              <video controls autoplay muted loop style="width: 100%; height: auto;">
+                <source src="static/images/spf_test3.mp4" type="video/mp4">
+                Your browser does not support the video tag.
+              </video>
+            </div>
+        
+            <br>
+            <div class="content has-text-centered">
+              <button class="button is-primary" onclick="showMoreTesting()">More</button>
+            </div>
+          </div>
+        </div>
+        
+        <script>
+          function showMoreTesting() {
+            var moreTestingEpisodes = document.getElementById('more-testing-episodes');
+            moreTestingEpisodes.style.display = moreTestingEpisodes.style.display === 'none' ? 'block' : 'none';
+          }
+        </script>
+
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<script>
+  function toggleRule() {
+    var shortRule = document.getElementById("short-rule");
+    var fullRule = document.getElementById("full-rule");
+    var toggleButton = document.getElementById("toggle-button");
+    
+    if (fullRule.style.display === "none") {
+      fullRule.style.display = "block";
+      shortRule.style.display = "none";
+      toggleButton.textContent = "Collapse Rule";
+    } else {
+      fullRule.style.display = "none";
+      shortRule.style.display = "block";
+      toggleButton.textContent = "Extend Rule";
+    }
+  }
+</script>
+
+
+<section class="section">
+  <div class="container is-max-desktop">
+    <!-- Method. -->
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-full_width">
+        <hr>
+        <h2 class="title is-3">Visual Action Prediction (VAP)</h2>
+        <br>
+        <div class="columns">
+          <div class="column custom-column-80 has-text-centered">
+            <p>
+              Visual Action Prediction (VAP) focuses on reasoning with high-dimensional data, requiring models to predict the actions of all agents from an RGB image.
+              The challenge here lies in sophisticated <strong>abstract reasoning with high-level perceptual noise</strong>.
+            </p>
+          </div>
+          <div class="column custom-column-20">
+            <figure class="image">
+              <img src="./static/images/vap.png" alt="Description of the image" style="width: 100%; height: auto;">
+            </figure>
+          </div>
+        </div>
+        <div class="hero-body">
+          <div class="hero-body">
+            <div style="text-align:center;">
+              <img src="static\images\vap_vis.png" style="width:100%; height:auto;">
+            </div>
+            <!-- <img class="rounded" src="./media/nice-slam/teaser.png" > -->
+            <br>
+            <p>
+              Qualitative comparison between NLM and GNN in the hard mode of VAP task. We display the grounded clauses, where the involved entities are marked with boxes in corresponding colors. Correct predictions are shown in gree, while the wrong one is in red.
+            </p>
+            </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<footer class="footer">
+  <div class="container">
+    <div class="content has-text-centered">
+    </div>
+    <div class="columns is-centered">
+      <div class="column is-8">
+        <div class="content">
+          <p>
+            This website is licensed under a <a rel="license"
+                                                href="http://creativecommons.org/licenses/by-sa/4.0/">Creative
+            Commons Attribution-ShareAlike 4.0 International License</a>.
+            This webpage template is from <a href="https://github.com/nerfies/nerfies.github.io">Nerfies</a>. 
+            We sincerely thank <a href="https://keunhong.com/">Keunhong Park</a> for developing and open-sourcing this template.
+          </p>
+        </div>
+      </div>
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
