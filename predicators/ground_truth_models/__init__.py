@@ -153,6 +153,20 @@ def get_gt_options(env_name: str) -> Set[ParameterizedOption]:
         predicates = {p.name: p for p in env.predicates}
         options = ViewPlanHardGroundTruthOptionFactory().get_options(
             env_name, types, predicates, env.action_space)
+    elif env_name == "satellites":
+        from predicators.ground_truth_models.satellites.options import \
+            SatellitesGroundTruthOptionFactory
+        types = {t.name: t for t in env.types}
+        predicates = {p.name: p for p in env.predicates}
+        options = SatellitesGroundTruthOptionFactory().get_options(
+            env_name, types, predicates, env.action_space)
+    elif env_name == "blocks_onclear":
+        from predicators.ground_truth_models.blocks_onclear.options import \
+            BlocksOnClearGroundTruthOptionFactory
+        types = {t.name: t for t in env.types}
+        predicates = {p.name: p for p in env.predicates}
+        options = BlocksOnClearGroundTruthOptionFactory().get_options(
+            env_name, types, predicates, env.action_space)
     else:
         raise NotImplementedError("Ground-truth options not implemented for "
                                   f"env: {env_name}")

@@ -4179,7 +4179,7 @@ def task2json(task: EnvironmentTask, base_path: str):
     with open(base_path, 'w') as f:
         json.dump(task_dict, f, indent=4)
 
-def parse_json_biplan_info(json_dict: Dict,
+def parse_json_ivntr_info(json_dict: Dict,
                            init_predicates: set[Predicate],
                            domain_types: Dict[str, Type]):
     # construct basic dummy pred for templates
@@ -4236,9 +4236,10 @@ def parse_str2nsrt(dummy_nsrt_dict: Dict,
     all_predicate_str2pred = {}
     for pred in init_predicates:
         all_predicate_str2pred[pred.name] = pred
-    for pred in dummy2real_pred.values():
-        if pred.name not in all_predicate_str2pred:
-            all_predicate_str2pred[pred.name] = pred
+    for dummy_pred, real_pred in dummy2real_pred.items():
+        if dummy_pred.name not in all_predicate_str2pred:
+            all_predicate_str2pred[dummy_pred.name] = real_pred
+    # print(all_predicate_str2pred.keys())
     all_option_str2option = {}
     for option in init_options:
         all_option_str2option[option.name] = option
@@ -4308,7 +4309,7 @@ def parse_str2nsrt(dummy_nsrt_dict: Dict,
             assert CFG.sampler_learner == "neural"
             approach_save_path = get_approach_load_path_str()
             if 'spot_wrapper' in approach_save_path:
-                approach_save_path = approach_save_path.replace('spot_wrapper[biplan]', 'biplan')
+                approach_save_path = approach_save_path.replace('spot_wrapper[ivntr]', 'ivntr')
                 approach_save_path = approach_save_path.replace('spot_', '')
             cls_weight_path = f"{approach_save_path}_sampler_op_{name}_cls_weight.pt"
             cls_info_path = f"{approach_save_path}_sampler_op_{name}_cls_info.pt"

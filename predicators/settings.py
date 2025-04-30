@@ -427,7 +427,7 @@ class GlobalSettings:
 
     # parameters for abstract GNN approach
     # keep fair with neupi, nn size, bs, epochs
-    biplan_nsrt_path = ''
+    ivntr_nsrt_path = ''
     gnn_num_message_passing = 3
     gnn_num_layers = 2 # after the first linear, how many gnn_layer_size layers
     gnn_layer_size = 512

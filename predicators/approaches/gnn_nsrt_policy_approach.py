@@ -52,29 +52,29 @@ class GNNNSRTPolicyApproach(GNNApproach):
                                     self._initial_options)
         self._dummy_nsrts = set()
         for env_nsrt in env_dummy_nsrts:
-            if CFG.biplan_nsrt_path != '':
-                if ".neupi_info" in CFG.biplan_nsrt_path:
-                    logging.info(f"Loading learned NSRT samplers from {CFG.biplan_nsrt_path}")
-                    with open(CFG.biplan_nsrt_path, "rb") as f:
+            if CFG.ivntr_nsrt_path != '':
+                if ".neupi_info" in CFG.ivntr_nsrt_path:
+                    logging.info(f"Loading learned NSRT samplers from {CFG.ivntr_nsrt_path}")
+                    with open(CFG.ivntr_nsrt_path, "rb") as f:
                         content_info = pkl.load(f)
-                    biplan_dummy_nsrts = content_info["dummy_nsrts"]
-                    for biplan_nsrt in biplan_dummy_nsrts:
-                        if biplan_nsrt.option == env_nsrt.option:
+                    ivntr_dummy_nsrts = content_info["dummy_nsrts"]
+                    for ivntr_nsrt in ivntr_dummy_nsrts:
+                        if ivntr_nsrt.option == env_nsrt.option:
                             new_nsrt = NSRT(name=env_nsrt.name, parameters=env_nsrt.parameters, preconditions=env_nsrt.preconditions,
                                 add_effects=env_nsrt.add_effects, delete_effects=env_nsrt.delete_effects,
                                 ignore_effects=env_nsrt.ignore_effects, option=env_nsrt.option,
-                                option_vars=env_nsrt.option_vars, _sampler=biplan_nsrt.sampler)
+                                option_vars=env_nsrt.option_vars, _sampler=ivntr_nsrt.sampler)
                             self._dummy_nsrts.add(new_nsrt)
                 else:
-                    assert ".saved" in CFG.biplan_nsrt_path
-                    logging.info(f"Loading learned NSRT samplers from {CFG.biplan_nsrt_path} (pts)")
+                    assert ".saved" in CFG.ivntr_nsrt_path
+                    logging.info(f"Loading learned NSRT samplers from {CFG.ivntr_nsrt_path} (pts)")
                     parameters = env_nsrt.parameters
                     option = env_nsrt.option
                     name = self._sorted_options.index(option)
-                    cls_weight_path = f"{CFG.biplan_nsrt_path}_sampler_op_Op{name}_cls_weight.pt"
-                    cls_info_path = f"{CFG.biplan_nsrt_path}_sampler_op_Op{name}_cls_info.pt"
-                    reg_weight_path = f"{CFG.biplan_nsrt_path}_sampler_op_Op{name}_reg_weight.pt"
-                    reg_info_path = f"{CFG.biplan_nsrt_path}_sampler_op_Op{name}_reg_info.pt"
+                    cls_weight_path = f"{CFG.ivntr_nsrt_path}_sampler_op_Op{name}_cls_weight.pt"
+                    cls_info_path = f"{CFG.ivntr_nsrt_path}_sampler_op_Op{name}_cls_info.pt"
+                    reg_weight_path = f"{CFG.ivntr_nsrt_path}_sampler_op_Op{name}_reg_weight.pt"
+                    reg_info_path = f"{CFG.ivntr_nsrt_path}_sampler_op_Op{name}_reg_info.pt"
                     if os.path.exists(cls_weight_path):
                         sampler = _create_neural_sampler(parameters, option,
                                                 cls_weight_path, 

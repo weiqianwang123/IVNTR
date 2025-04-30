@@ -24,11 +24,16 @@ This repo is heavily based on [predicators](https://github.com/Learning-and-Inte
 - From scratch
     ```
     git clone https://github.com/Jaraxxus-Me/IVNTR.git
+    git submodule update --init --recursive
     conda create -n ivntr python=3.8.10
     cd IVNTR
     pip install -e .
     # We have used torch 2.1.2 on CUDA 12.1 machine, but this should be flexible
     pip install torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cu121
+    # Install FastDownward, following their instructions if anything goes wrong
+    cd ext/downward
+    python build.py
+    mkdir saved_approaches saved_datasets logs
     ```
     If you want to run the blocks point cloud environment, follow instructions here to compile pytorch3d on your machine.
     Otherwise, simply use pip install
@@ -51,7 +56,7 @@ This repo is heavily based on [predicators](https://github.com/Learning-and-Inte
     ├── saved_approaches/
     │   ├── open_models/
     │   │   ├── satellites/
-    │   │   │   ├── biplan_0/
+    │   │   │   ├── ivntr_0/
     │   │   ├── view_plan_hard/
     │   │   ├── ...
     ```
@@ -71,7 +76,8 @@ This repo is heavily based on [predicators](https://github.com/Learning-and-Inte
     bash scripts/test/satellites/test_ivntr.sh
     ```
     You will notice that the script will automatically create training demonstrations and test tasks in `saved_datasets`.
-    You should expect outputs like this (also see our log files `final/satellites/sim/biplan_ood_0.log`):
+    This may take a while.
+    You should expect outputs like this (also see our log files `final/satellites/sim/ivntr_ood_0.log`):
     ```
     ...
     Task 50 / 50: SOLVED
@@ -95,17 +101,17 @@ This repo is heavily based on [predicators](https://github.com/Learning-and-Inte
     ```
 4. A detailed explanation of the pre-trained folders
 
-    `biplan_0/neural_b_p3`: ALL of the neural weights for invented predicate group `b_p3(?sat,?obj)` during one tree expansion.
+    `ivntr_0/neural_b_p3`: ALL of the neural weights for invented predicate group `b_p3(?sat,?obj)` during one tree expansion.
 
-    `biplan_0/xxxx.saved.json`: The information about SELECTED predicates and the operators constructed from them. In the `.sh` files, the flag `load_neupi_from_json` will try to use this file.
+    `ivntr_0/xxxx.saved.json`: The information about SELECTED predicates and the operators constructed from them. In the `.sh` files, the flag `load_neupi_from_json` will try to use this file.
 
-    `biplan_0/xxxx.saved.neupi_info`: Some legacy info generated, but it is hardware dependent.
+    `ivntr_0/xxxx.saved.neupi_info`: Some legacy info generated, but it is hardware dependent.
 
-    `biplan_0/xxxx.saved.init_atom_traj`: Useless.
+    `ivntr_0/xxxx.saved.init_atom_traj`: Useless.
 
 5. Other baselines in TABLE I
 
-    You can also play with other baselines by following the `.sh` files in `scripts/test/satellites`.
+    You can also play with other baselines by following the `.sh` files in `scripts/test/satellites`. But they will need to be re-trained via next section.
 
 
 

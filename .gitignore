@@ -16,7 +16,6 @@ pylint_recursive.py
 results
 eval_trajectories
 videos
-logs
 saved_approaches
 saved_datasets
 scripts/results
@@ -37,5 +36,3 @@ wandb/
 *.txt
 *.png
 *.ply
-neupi_exps
-ext

@@ -45,7 +45,7 @@ _Output = TypeVar("_Output")  # a generic type for the output of this GNN
 ################################################################################
 
 
-class BiPlanCheckerApproach(BilevelLearningApproach):
+class ivntrCheckerApproach(BilevelLearningApproach):
     """An approach that invents predicates by learn a GNN that maps continous Graph 
     to discrete space. Using Action Effect Theorem. """
 
@@ -84,7 +84,7 @@ class BiPlanCheckerApproach(BilevelLearningApproach):
 
     @classmethod
     def get_name(cls) -> str:
-        return "biplan_checker"
+        return "ivntr_checker"
 
     def _get_current_predicates(self) -> Set[Predicate]:
         return self._initial_predicates | self._learned_predicates

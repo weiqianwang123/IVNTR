@@ -2,27 +2,27 @@ export FD_EXEC_PATH=/home/bowenli2/ws/NeuroSym/NeuPI/ext/downward
 export PYTHONHASHSEED=0
 export CUBLAS_WORKSPACE_CONFIG=:4096:8
 
-for seed in 0 1 2 3 4
+for seed in 5
 do
     echo "Running Seed $seed --------------------------------------"
     # Record start time
     start_time=$(date +%s)
     # low-level sampling is very hard for this environment
-    if python3 predicators/main.py --env satellites --approach transformer_nsrt_policy \
+    if python3 predicators/main.py --env pickplace_stair --approach gnn_nsrt_policy \
         --seed $seed --offline_data_method "demo" \
-        --excluded_predicates "ViewClear,IsCalibrated,HasChemX,HasChemY,Sees" \
         --exclude_domain_feat "none" \
-        --domain_sampler_data_filter "none" \
-        --num_train_tasks 500 \
+        --excluded_predicates "HandSees,ViewableArm,HoldingTgt,HoldingStair,HandEmpty,Reachable,Near,OnGround,OnStair" \
+        --num_train_tasks 2000 \
         --load_data \
-        --gnn_layer_size 128 \
-        --gnn_batch_size 512 \
+        --gnn_layer_size 512 \
+        --gnn_batch_size 1024 \
+        --timeout 30 \
+        --spot_graph_nav_map "sqh_final" \
         --gnn_option_policy_solve_with_shooting True \
-        --timeout 5 \
-        --load_approach \
-        --ivntr_nsrt_path saved_approaches/final/satellites/ivntr_${seed}/satellites__ivntr__${seed}__ViewClear,IsCalibrated,HasChemX,HasChemY,Sees___aesuperv_False__.saved.neupi_info \
-        --approach_dir "saved_approaches/final/satellites/tf_policy_$seed" \
-        --log_file logs/final/satellites/sim/tf_policy_ood_$seed.log; then
+        --gnn_do_normalization True \
+        --biplan_nsrt_path saved_approaches/final/pickplace_stair/biplan_$seed/pickplace_stair__biplan__${seed}__HandSees,ViewableArm,HoldingTgt,HoldingStair,HandEmpty,Reachable,Near,OnGround,OnStair___aesuperv_False__.saved.neupi_info \
+        --approach_dir "saved_approaches/final/pickplace_stair/gnn_policy_$seed" \
+        --log_file logs/final/pickplace_stair/sim/gnn_policy_ood_$seed.log; then
         echo "Seed $seed completed successfully."
     else
         echo "Seed $seed encountered an error."
@@ -45,22 +45,23 @@ do
     # Record start time
     start_time=$(date +%s)
     # low-level sampling is very hard for this environment
-    if python3 predicators/main.py --env satellites --approach transformer_nsrt_policy \
+    if python3 predicators/main.py --env pickplace_stair --approach gnn_nsrt_policy \
         --seed $seed --offline_data_method "demo" \
-        --excluded_predicates "ViewClear,IsCalibrated,HasChemX,HasChemY,Sees" \
-        --num_train_tasks 500 \
         --exclude_domain_feat "none" \
-        --domain_sampler_data_filter "none" \
+        --excluded_predicates "HandSees,ViewableArm,HoldingTgt,HoldingStair,HandEmpty,Reachable,Near,OnGround,OnStair" \
+        --num_train_tasks 2000 \
         --load_data \
-        --gnn_layer_size 128 \
-        --gnn_batch_size 512 \
         --load_approach \
-        --in_domain_test True \
+        --gnn_layer_size 512 \
+        --gnn_batch_size 1024 \
+        --timeout 30 \
+        --spot_graph_nav_map "sqh_final" \
         --gnn_option_policy_solve_with_shooting True \
-        --timeout 5 \
-        --ivntr_nsrt_path saved_approaches/final/satellites/ivntr_${seed}/satellites__ivntr__${seed}__ViewClear,IsCalibrated,HasChemX,HasChemY,Sees___aesuperv_False__.saved.neupi_info \
-        --approach_dir "saved_approaches/final/satellites/tf_policy_$seed" \
-        --log_file logs/final/satellites/sim/tf_policy_in_domain_$seed.log; then
+        --gnn_do_normalization True \
+        --in_domain_test True \
+        --biplan_nsrt_path saved_approaches/final/pickplace_stair/biplan_$seed/pickplace_stair__biplan__${seed}__HandSees,ViewableArm,HoldingTgt,HoldingStair,HandEmpty,Reachable,Near,OnGround,OnStair___aesuperv_False__.saved.neupi_info \
+        --approach_dir "saved_approaches/final/pickplace_stair/gnn_policy_$seed" \
+        --log_file logs/final/pickplace_stair/sim/gnn_policy_in_domain_$seed.log; then
         echo "Seed $seed completed successfully."
     else
         echo "Seed $seed encountered an error."
