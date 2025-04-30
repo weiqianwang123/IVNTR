@@ -1,0 +1,31 @@
+############# model parameters #############
+AGENT:
+    env_params:
+        env_name: 'satellites_simple'
+        action_dim: 14          # 2 sat, 1 obj, 7 operators
+        state_dim: 171           # 25*3 + 16*6 = 171
+        obj_centric_feat_dim: 25
+        rel_feat_dim: 16
+        num_sat: 2
+        num_obj: 1
+    log_dir: ./log/test
+    model_path: './model'
+    model_id: 1
+    grader_model: "mlp"
+    planner:
+        epsilon: 0.4
+        horizon: 10          # should be consistent with the max step
+        popsize: 200        # how many random samples for mpc
+        max_buffer_size: 100000
+        pretrain_buffer_size: 50
+        validation_flag: True
+        validation_freq: 1      # the frequency of validation
+        validation_ratio: 0.2   # ratio of validation set
+        lr: 0.001
+        n_epochs: 300         
+        hidden_dim: 4           # hidden layer number
+        hidden_size: 128         # hidden layer size
+        batch_size: 128
+        scale: 1                # normalizing scale for NN input and output, determined by envs
+    discover:
+        discovery_interval: 10
