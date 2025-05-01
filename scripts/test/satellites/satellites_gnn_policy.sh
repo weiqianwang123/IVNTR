@@ -1,4 +1,4 @@
-export FD_EXEC_PATH=/home/bowenli2/ws/NeuroSym/NeuPI/ext/downward
+export FD_EXEC_PATH=ext/downward
 export PYTHONHASHSEED=0
 export CUBLAS_WORKSPACE_CONFIG=:4096:8
 

@@ -1,4 +1,4 @@
-export FD_EXEC_PATH=/home/bowenli2/ws/NeuroSym/NeuPI/ext/downward
+export FD_EXEC_PATH=ext/downward
 export PYTHONHASHSEED=0
 export CUBLAS_WORKSPACE_CONFIG=:4096:8
 
@@ -20,7 +20,7 @@ do
         --spot_graph_nav_map "sqh_final" \
         --gnn_option_policy_solve_with_shooting True \
         --gnn_do_normalization True \
-        --biplan_nsrt_path saved_approaches/final/pickplace_stair/biplan_$seed/pickplace_stair__biplan__${seed}__HandSees,ViewableArm,HoldingTgt,HoldingStair,HandEmpty,Reachable,Near,OnGround,OnStair___aesuperv_False__.saved.neupi_info \
+        --ivntr_nsrt_path saved_approaches/final/pickplace_stair/ivntr_$seed/pickplace_stair__ivntr__${seed}__HandSees,ViewableArm,HoldingTgt,HoldingStair,HandEmpty,Reachable,Near,OnGround,OnStair___aesuperv_False__.saved.neupi_info \
         --approach_dir "saved_approaches/final/pickplace_stair/tf_policy_$seed" \
         --log_file logs/final/pickplace_stair/sim/tf_policy_ood_$seed.log; then
         echo "Seed $seed completed successfully."
@@ -59,7 +59,7 @@ do
         --gnn_option_policy_solve_with_shooting True \
         --gnn_do_normalization True \
         --in_domain_test True \
-        --biplan_nsrt_path saved_approaches/final/pickplace_stair/biplan_$seed/pickplace_stair__biplan__${seed}__HandSees,ViewableArm,HoldingTgt,HoldingStair,HandEmpty,Reachable,Near,OnGround,OnStair___aesuperv_False__.saved.neupi_info \
+        --ivntr_nsrt_path saved_approaches/final/pickplace_stair/ivntr_$seed/pickplace_stair__ivntr__${seed}__HandSees,ViewableArm,HoldingTgt,HoldingStair,HandEmpty,Reachable,Near,OnGround,OnStair___aesuperv_False__.saved.neupi_info \
         --approach_dir "saved_approaches/final/pickplace_stair/tf_policy_$seed" \
         --log_file logs/final/pickplace_stair/sim/tf_policy_in_domain_$seed.log; then
         echo "Seed $seed completed successfully."

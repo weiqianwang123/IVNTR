@@ -1,4 +1,4 @@
-export FD_EXEC_PATH=/home/bowenli2/ws/NeuroSym/NeuPI/ext/downward
+export FD_EXEC_PATH=ext/downward
 export PYTHONHASHSEED=0
 export CUBLAS_WORKSPACE_CONFIG=:4096:8
 
@@ -62,6 +62,7 @@ do
         --num_train_tasks 2000 \
         --load_data \
         --load_approach \
+        --load_neupi_from_json True \
         --neupi_entropy_w 0.0 \
         --neupi_loss_w 1.0 \
         --bilevel_plan_without_sim False \

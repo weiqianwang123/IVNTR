@@ -116,6 +116,62 @@ This repo is heavily based on [predicators](https://github.com/Learning-and-Inte
 
 
 ## Inventing Neural Predicates from Demonstration
+There are two optional predicate invention pipelines and they are used in different domains.
+- Inventing ALL groups of predicates in a single run. The groups are invented one by one and search over the predicate pool is conducted after that.
+    This works for small scale domains such as `satellites`, `blocks`, `viewplan`.
+    For example, to invent predicates for `satellites`, run:
+    ```
+    bash scripts/train/satellites/satellites_biplan.sh
+    ```
+    Some important configures:
+    - `predicators/config/satellites/pred.yaml`: Specifies the learning configurations for each group (make sure not to skip any of the predicates if not resumed).
+    - `--neupi_save_path`: Defines where the predicates will be stored.
+    - `--domain_aaai_thresh`: Defines the threshold to stop predicate selection.
+    Test will start by default right after training.
+
+- Inventing each groups of predicates in parallel multiple runs. This can happen if you have multiple GPUs and the predicate pool can be constructed much faster. Selection is done after all groups of invention finishes.
+    This works for large scale domains such as `engrave`, `pickplace_stair`.
+    For example, to invent predicates for `pickplace_stair`, do the following in sequence:
+    0. Collect demonstration data:
+    We will use an `oracle` bilevel planner to collect deomonstrations, e.g.,
+    ```
+    scripts/train/pickplace_stair/collect_data_0.sh
+    ```
+    Note that:
+        - Use `--sesame_task_planner 'fdopt'`.
+        - The data will be saved to `saved_datasets`
+        - After this, use `--load_data` in the following steps.
+
+    1. Invent individual groups:
+    ```
+    bash scripts/train/pickplace_stair/pickplace_biplan_up12.sh # on GPU0
+    bash scripts/train/pickplace_stair/pickplace_biplan_bp3.sh # on GPU1
+    bash scripts/train/pickplace_stair/pickplace_biplan_bp4.sh # on GPU2
+    bash scripts/train/pickplace_stair/pickplace_biplan_bp5.sh # on GPU3
+    ...
+    ```
+    Note that:
+        - For each run, we have only used part of the predicate learning configuration. E.g., `predicators/config/pickplace_stair/pred_up12.yaml` is just part of `predicators/config/pickplace_stair/pred_all.yaml`.
+        - You can kill each run after the invention is done. You can know this from the logging:
+        ```
+        Neural Predicate Invention Done in xxx seconds.
+        ```
+        Once you see this line, kill the run.
+    
+    2. Search the complete predicate pool:
+    ```
+    bash scripts/train/pickplace_stair/pickplace_biplan_search.sh
+    ```
+    Note that:
+        - Here we used `predicators/config/pickplace_stair/pred_all.yaml`, where all groups are skipped, `skip_train: True`.
+        - In ths `.sh` file, we used `--neupi_load_pretrained` instead of `--neupi_save_path` in step 1. But the two directories are the same.
+        - After this step, you will notice that there will be an additional file named `xxx.neupi_info` in the `--neupi_load_pretrained` directory. This stores (1) the selected predicates and the operator and (2) the learned sampler for each operator. A good way to interprete it would be using this file:
+        ```
+        python3 scripts/biplan_pkl2json.py # replace the file path
+        ```
+        This generates the `.json` file we have used in the previous test section.
+        `.json` file does not store the learned samplers since they are neural generators, but samplers will be saved as `.pt` files and can be loaded with this flag `neupi_gt_sampler`. Detail see L2467 in `predicators/approaches/bilevel_learning_approach.py`.
+
 
 ## Reference
 If you used our work in your research, or you find our work useful, please cite us as:

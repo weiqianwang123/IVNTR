@@ -1,4 +1,4 @@
-export FD_EXEC_PATH=/home/bowenli2/ws/NeuroSym/NeuPI/ext/downward
+export FD_EXEC_PATH=ext/downward
 export PYTHONHASHSEED=0
 export CUBLAS_WORKSPACE_CONFIG=:4096:8
 
@@ -8,7 +8,7 @@ do
     # Record start time
     start_time=$(date +%s)
     # low-level sampling is very hard for this environment
-    if python3 predicators/main.py --env view_plan_trivial --approach biplan \
+    if python3 predicators/main.py --env view_plan_trivial --approach ivntr \
         --seed $seed --offline_data_method "demo" \
         --disable_harmlessness_check True \
         --exclude_domain_feat "none" \
@@ -28,9 +28,9 @@ do
         --execution_monitor expected_atoms \
         --spot_graph_nav_map "debug" \
         --domain_aaai_thresh 300000 \
-        --approach_dir "saved_approaches/open_models/view_plan_trivial/biplan_$seed" \
-        --neupi_load_pretrained "saved_approaches/open_models/view_plan_trivial/biplan_$seed" \
-        --log_file logs/view_plan_trivial/sim/biplan_ood_$seed.log; then
+        --approach_dir "saved_approaches/open_models/view_plan_trivial/ivntr_$seed" \
+        --neupi_load_pretrained "saved_approaches/open_models/view_plan_trivial/ivntr_$seed" \
+        --log_file logs/view_plan_trivial/sim/ivntr_ood_$seed.log; then
         echo "Seed $seed completed successfully."
     else
         echo "Seed $seed encountered an error."
@@ -53,7 +53,7 @@ do
     # Record start time
     start_time=$(date +%s)
     # low-level sampling is very hard for this environment
-    if python3 predicators/main.py --env view_plan_trivial --approach biplan \
+    if python3 predicators/main.py --env view_plan_trivial --approach ivntr \
         --seed $seed --offline_data_method "demo" \
         --disable_harmlessness_check True \
         --excluded_predicates "HandSees,ViewClear,Viewable,Calibrated" \
@@ -72,10 +72,11 @@ do
         --execution_monitor expected_atoms \
         --in_domain_test True \
         --load_approach \
+        --load_neupi_from_json True \
         --spot_graph_nav_map "debug" \
-        --approach_dir "saved_approaches/open_models/view_plan_trivial/biplan_$seed" \
-        --neupi_save_path "saved_approaches/open_models/view_plan_trivial/biplan_$seed" \
-        --log_file logs/view_plan_trivial/sim/biplan_indomain_$seed.log; then
+        --approach_dir "saved_approaches/open_models/view_plan_trivial/ivntr_$seed" \
+        --neupi_save_path "saved_approaches/open_models/view_plan_trivial/ivntr_$seed" \
+        --log_file logs/view_plan_trivial/sim/ivntr_indomain_$seed.log; then
         echo "Seed $seed completed successfully."
     else
         echo "Seed $seed encountered an error."

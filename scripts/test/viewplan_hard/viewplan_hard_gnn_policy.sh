@@ -1,4 +1,4 @@
-export FD_EXEC_PATH=/home/bowenli2/ws/NeuroSym/NeuPI/ext/downward
+export FD_EXEC_PATH=ext/downward
 export PYTHONHASHSEED=0
 export CUBLAS_WORKSPACE_CONFIG=:4096:8
 
@@ -19,7 +19,7 @@ do
         --gnn_option_policy_solve_with_shooting True \
         --spot_graph_nav_map "sqh_final" \
         --gnn_do_normalization True \
-        --biplan_nsrt_path saved_approaches/final/view_plan_hard/biplan_${seed}/view_plan_hard__biplan__${seed}__HandSees,ViewableArm,Calibrated,Holding,HandEmpty,Reachable,Near,Close,OnGround,OnStair___aesuperv_False__.saved.neupi_info \
+        --ivntr_nsrt_path saved_approaches/final/view_plan_hard/ivntr_${seed}/view_plan_hard__ivntr__${seed}__HandSees,ViewableArm,Calibrated,Holding,HandEmpty,Reachable,Near,Close,OnGround,OnStair___aesuperv_False__.saved.neupi_info \
         --approach_dir "saved_approaches/final/view_plan_hard/gnn_policy_$seed" \
         --log_file logs/final/view_plan_hard/sim/gnn_ood_$seed.log; then
         echo "Seed $seed completed successfully."
@@ -57,7 +57,7 @@ do
         --in_domain_test True \
         --gnn_do_normalization True \
         --spot_graph_nav_map "sqh_final" \
-        --biplan_nsrt_path saved_approaches/final/view_plan_hard/biplan_${seed}/view_plan_hard__biplan__${seed}__HandSees,ViewableArm,Calibrated,Holding,HandEmpty,Reachable,Near,Close,OnGround,OnStair___aesuperv_False__.saved.neupi_info \
+        --ivntr_nsrt_path saved_approaches/final/view_plan_hard/ivntr_${seed}/view_plan_hard__ivntr__${seed}__HandSees,ViewableArm,Calibrated,Holding,HandEmpty,Reachable,Near,Close,OnGround,OnStair___aesuperv_False__.saved.neupi_info \
         --approach_dir "saved_approaches/final/view_plan_hard/gnn_policy_$seed" \
         --log_file logs/final/view_plan_hard/sim/gnn_in_domain_$seed.log; then
         echo "Seed $seed completed successfully."

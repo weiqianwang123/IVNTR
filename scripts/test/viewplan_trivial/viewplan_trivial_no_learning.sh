@@ -1,4 +1,4 @@
-export FD_EXEC_PATH=/home/bowenli2/ws/NeuroSym/NeuPI/ext/downward
+export FD_EXEC_PATH=ext/downward
 export PYTHONHASHSEED=0
 export CUBLAS_WORKSPACE_CONFIG=:4096:8
 
@@ -17,7 +17,7 @@ do
         --load_data \
         --load_task \
         --spot_graph_nav_map "debug" \
-        --biplan_nsrt_path saved_approaches/final/view_plan_trivial/biplan_${seed}/view_plan_trivial__biplan__${seed}__HandSees,ViewClear,Viewable,Calibrated___aesuperv_False__.saved.neupi_info \
+        --ivntr_nsrt_path saved_approaches/final/view_plan_trivial/ivntr_${seed}/view_plan_trivial__ivntr__${seed}__HandSees,ViewClear,Viewable,Calibrated___aesuperv_False__.saved.neupi_info \
         --log_file logs/final/view_plan_trivial/sim/random_nsrt_in_domain_$seed.log; then
         echo "Seed $seed completed successfully."
     else
@@ -50,7 +50,7 @@ do
         --load_data \
         --load_task \
         --spot_graph_nav_map "debug" \
-        --biplan_nsrt_path saved_approaches/final/view_plan_trivial/biplan_${seed}/view_plan_trivial__biplan__${seed}__HandSees,ViewClear,Viewable,Calibrated___aesuperv_False__.saved.neupi_info \
+        --ivntr_nsrt_path saved_approaches/final/view_plan_trivial/ivntr_${seed}/view_plan_trivial__ivntr__${seed}__HandSees,ViewClear,Viewable,Calibrated___aesuperv_False__.saved.neupi_info \
         --log_file logs/final/view_plan_trivial/sim/random_nsrt_ood_$seed.log; then
         echo "Seed $seed completed successfully."
     else

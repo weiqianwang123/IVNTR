@@ -1,4 +1,4 @@
-export FD_EXEC_PATH=/home/bowenli2/ws/NeuroSym/NeuPI/ext/downward
+export FD_EXEC_PATH=ext/downward
 export PYTHONHASHSEED=0
 export CUBLAS_WORKSPACE_CONFIG=:4096:8
 
@@ -21,7 +21,7 @@ do
         --load_approach \
         --fosae_sae_do_normalization True \
         --gnn_option_policy_solve_with_shooting True \
-        --biplan_nsrt_path saved_approaches/final/blocks_pos/biplan_${seed}/blocks_onclear__biplan__${seed}__On,OnTable,GripperOpen,Holding,Clear___aesuperv_False__.saved.neupi_info \
+        --ivntr_nsrt_path saved_approaches/final/blocks_pos/ivntr_${seed}/blocks_onclear__ivntr__${seed}__On,OnTable,GripperOpen,Holding,Clear___aesuperv_False__.saved.neupi_info \
         --approach_dir "saved_approaches/final/blocks_pos/fosae_policy_$seed" \
         --log_file logs/final/blocks_pos/sim/fosae_policy_ood_$seed.log; then
         echo "Seed $seed completed successfully."
@@ -60,7 +60,7 @@ do
         --load_approach \
         --fosae_sae_do_normalization True \
         --gnn_option_policy_solve_with_shooting True \
-        --biplan_nsrt_path saved_approaches/final/blocks_pos/biplan_${seed}/blocks_onclear__biplan__${seed}__On,OnTable,GripperOpen,Holding,Clear___aesuperv_False__.saved.neupi_info \
+        --ivntr_nsrt_path saved_approaches/final/blocks_pos/ivntr_${seed}/blocks_onclear__ivntr__${seed}__On,OnTable,GripperOpen,Holding,Clear___aesuperv_False__.saved.neupi_info \
         --approach_dir "saved_approaches/final/blocks_pos/fosae_policy_$seed" \
         --log_file logs/final/blocks_pos/sim/fosae_policy_in_domain_$seed.log; then
         echo "Seed $seed completed successfully."

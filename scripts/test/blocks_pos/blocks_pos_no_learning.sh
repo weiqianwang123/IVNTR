@@ -1,4 +1,4 @@
-export FD_EXEC_PATH=/home/bowenli2/ws/NeuroSym/NeuPI/ext/downward
+export FD_EXEC_PATH=ext/downward
 export PYTHONHASHSEED=0
 export CUBLAS_WORKSPACE_CONFIG=:4096:8
 
@@ -16,7 +16,7 @@ do
         --in_domain_test True \
         --load_data \
         --timeout 5 \
-        --biplan_nsrt_path saved_approaches/final/blocks_pos/biplan_${seed}/blocks_onclear__biplan__${seed}__On,OnTable,GripperOpen,Holding,Clear___aesuperv_False__.saved.neupi_info \
+        --ivntr_nsrt_path saved_approaches/final/blocks_pos/ivntr_${seed}/blocks_onclear__ivntr__${seed}__On,OnTable,GripperOpen,Holding,Clear___aesuperv_False__.saved.neupi_info \
         --log_file logs/final/blocks_pos/sim/random_nsrt_in_domain_$seed.log; then
         echo "Seed $seed completed successfully."
     else
@@ -48,7 +48,7 @@ do
         --num_train_tasks 500 \
         --load_data \
         --timeout 5 \
-        --biplan_nsrt_path saved_approaches/final/blocks_pos/biplan_${seed}/blocks_onclear__biplan__${seed}__On,OnTable,GripperOpen,Holding,Clear___aesuperv_False__.saved.neupi_info \
+        --ivntr_nsrt_path saved_approaches/final/blocks_pos/ivntr_${seed}/blocks_onclear__ivntr__${seed}__On,OnTable,GripperOpen,Holding,Clear___aesuperv_False__.saved.neupi_info \
         --log_file logs/final/blocks_pos/sim/random_nsrt_ood_$seed.log; then
         echo "Seed $seed completed successfully."
     else
