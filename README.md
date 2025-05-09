@@ -50,7 +50,7 @@ This repo is heavily based on [predicators](https://github.com/Learning-and-Inte
 
 - [ ] Verify them on local machine
 
-1. Download the pre-trained models [here](https://drive.google.com/file/d/1OUSjQKi40Gv4Lmmo5s-EfvV9gR1wX4z9/view?usp=drive_link), extract them in `IVNTR/saved_approaches`. Download all of our experiment log files [here](https://drive.google.com/file/d/1rZJZE3sQvucGBK7TUdSgmkYvP7fLooro/view?usp=drive_link) (for verifying the reproduction).
+1. Download the pre-trained models [here](https://drive.google.com/file/d/1hOb776_weRpD6wkS5mBnGmkPLwrEXGku/view?usp=sharing), extract them in `IVNTR/saved_approaches`. Download all of our experiment log files [here](https://drive.google.com/file/d/1rZJZE3sQvucGBK7TUdSgmkYvP7fLooro/view?usp=drive_link) (for verifying the reproduction).
     ```
     IVNTR/
     ├── saved_approaches/
