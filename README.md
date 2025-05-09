@@ -73,7 +73,7 @@ This repo is heavily based on [predicators](https://github.com/Learning-and-Inte
 
     For example, testing the satellites domain:
     ```
-    bash scripts/test/satellites/test_ivntr.sh
+    bash scripts/test/satellites/satellites_ivntr.sh
     ```
     You will notice that the script will automatically create training demonstrations and test tasks in `saved_datasets`.
     This may take a while.
