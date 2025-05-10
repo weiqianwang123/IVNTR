@@ -19,7 +19,7 @@ do
         --neupi_do_normalization False \
         --num_train_tasks 500 \
         --load_data \
-        --domain_aaai_thresh 100000 \
+        --domain_aaai_thresh 300000 \
         --neupi_entropy_w 0.5 \
         --neupi_loss_w 0.5 \
         --neupi_equ_dataset 1.0 \

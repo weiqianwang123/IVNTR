@@ -224,15 +224,14 @@ def train_val_model_single(curr_pred, ent_idx, pred_save_path, ae_vector, iterat
 
 
 class BilevelLearningApproach(NSRTLearningApproach):
-    """Bilevel learning approach with iteration counting."""
+    """An approach that invents predicates by learn a GNN that maps continous Graph 
+    to discrete space. Using Action Effect Theorem. """
 
     def __init__(self, initial_predicates: Set[Predicate],
                  initial_options: Set[ParameterizedOption], types: Set[Type],
                  action_space: Box, train_tasks: List[Task]) -> None:
         super().__init__(initial_predicates, initial_options, types,
-                        action_space, train_tasks)
-        self.total_iterations = 0  # Add counter for total iterations
-        self.predicate_invention_iterations = 0  # Add counter for predicate invention
+                         action_space, train_tasks)
         self._sorted_options = sorted(self._initial_options,
                                       key=lambda o: o.name)
         for option in self._sorted_options:
@@ -1455,10 +1454,9 @@ class BilevelLearningApproach(NSRTLearningApproach):
     def learn_neural_predicates(
         self, dataset: Dataset
     ) -> Tuple[List[GroundAtomTrajectory], Dict[Predicate, float]]:
-        """Learn neural predicates with MCTS iteration counting."""
-        total_mcts_iterations = 0  # Counter for total MCTS iterations
-        
+        """Learn the Neural predicates by Action Effect Martix Identification."""
         logging.info("Constructing NeuPi Data...")
+        total_mcts_iterations = 0
         # 1. Generate data from the dataset. This is general
         data, trajectories, init_atom_traj = self._generate_data_from_dataset(dataset)
         # 2. Setup the input fields for the neural predicate, this is general
@@ -1684,8 +1682,11 @@ class BilevelLearningApproach(NSRTLearningApproach):
                         state = data_x_new.numpy()
                         value = learned_guidance.numpy()
                         symbolic_search_model.update_value(state, value)
-
+                    logging.info(f"Till this iteration, MCTS iterations: {symbolic_search_model.get_iteration_count()}")
+                
+            total_mcts_iterations += symbolic_search_model.get_iteration_count()
             logging.info(f"******************Bi-level Optimization Done for {curr_pred.name}! Summary:******************")
+            logging.info(f"Total MCTS iterations: {total_mcts_iterations}")
             logging.info(f"After {iteration} iterations, we got {len(self.learned_ae_pred_info[curr_pred]['ae_vecs'])} basic vectors:")
             self.learned_ae_pred_info[curr_pred]['learned'] = True
             predicate_vars_basic = []
@@ -1919,12 +1920,6 @@ class BilevelLearningApproach(NSRTLearningApproach):
                                   'ae_vecs': self.learned_ae_pred_info[curr_pred]['ae_vecs'][i],
                                   'scores': self.learned_ae_pred_info[curr_pred]['scores'][i],
                                   'quantifiers': self.learned_ae_pred_info[curr_pred]['quantifiers'][i]}, f)
-
-            # After MCTS search, get the iteration count
-            if hasattr(self, '_searcher') and self._searcher is not None:
-                total_mcts_iterations += self._searcher.get_iteration_count()
-        
-        logging.info(f"Total MCTS iterations across all predicates: {total_mcts_iterations}")
         return trajectories, init_atom_traj
 
     def _get_predicate_identifier(
@@ -2312,46 +2307,118 @@ class BilevelLearningApproach(NSRTLearningApproach):
         return set(final_predicates), last_matrix, final_predicates, last_ent_idx
     
     def learn_from_offline_dataset(self, dataset: Dataset) -> None:
-        """Learn from offline dataset with iteration counting."""
-        # Reset counters at the start
-        self.total_iterations = 0
-        self.predicate_invention_iterations = 0
-        
-        # Step 1: Initializing individual NN predicates by Bi-Level Learning
-        logging.info("Step 1: Initializing individual NN predicates")
-        
-        # Track iterations for each predicate
-        for pred in self._get_current_predicates():
-            self.predicate_invention_iterations += 1
-            logging.info(f"Processing predicate {pred.name}, iteration {self.predicate_invention_iterations}")
-            
-            # Your existing predicate learning code here
-            # ... existing code ...
-            
-            # Update total iterations
-            self.total_iterations += 1
-
-        # Log final iteration counts
-        logging.info(f"Total predicate invention iterations: {self.predicate_invention_iterations}")
-        logging.info(f"Total iterations across all processes: {self.total_iterations}")
-
-    def get_iteration_counts(self) -> Dict[str, int]:
-        """Get the current iteration counts.
-        
-        Returns:
-            Dictionary containing:
-            - total_iterations: Total iterations across all processes
-            - predicate_invention_iterations: Iterations in predicate invention
-        """
-        return {
-            "total_iterations": self.total_iterations,
-            "predicate_invention_iterations": self.predicate_invention_iterations
-        }
-
-    def reset_iteration_counts(self) -> None:
-        """Reset all iteration counters to 0."""
-        self.total_iterations = 0
-        self.predicate_invention_iterations = 0
+        #  Step 1: Initializing individual NN predicates by Bi-Level Learning
+        if not CFG.load_neupi_from_json:
+            s = time.time()
+            learning_trajectories, init_atom_traj = self.learn_neural_predicates(dataset)
+            logging.info(f"Neural Predicate Invention Done in {time.time()-s} seconds.")
+            if CFG.neupi_save_init_atom_dataset:
+                save_path = utils.get_approach_save_path_str()
+                with open(f"{save_path}_.init_atom_traj", "wb") as f:
+                    pkl.dump(init_atom_traj, f)
+            # Purne Equivalence Classes
+            # Step 2: Get all the columns into one big matrix and their info, including provided
+            num_traj = len(learning_trajectories)
+            traj4equavalence = [learning_trajectories[i] for i in range(int(num_traj * CFG.neupi_equ_dataset))]
+            huge_matrix, colind2info = self._get_invented_pruned_predicates(traj4equavalence)
+            all_pred = set(info[0] for info in colind2info.values())
+            new_predicate = set()
+            for pred in list(all_pred):
+                if pred in self._initial_predicates:
+                    continue
+                new_predicate.add(pred)
+            # Step 3: Compute the AAAI Objective for each "possible" matrix/predicate set
+            # 1. construct atom dataset for all the predicates
+            traj4search = [init_atom_traj[i] for i in range(int(num_traj * CFG.neupi_pred_search_dataset))]
+            s = time.time()
+            atom_dataset_part = utils.add_ground_atom_dataset(
+                            traj4search,
+                            new_predicate)
+            # remeber to add the initial predicates, which may not in the effect matrix (unchanged)
+            all_pred = all_pred | self._initial_predicates
+            # 2. Score Function Def
+            # Note that need to use full _train_tasks
+            score_function = _OperatorBeliefScoreFunction(
+                    atom_dataset_part, self._train_tasks, self.ae_row_names,
+                    CFG.neupi_aaai_metric)
+            self._learned_predicates, self.ae_matrix_tgt, self.ae_col_names_all, self.ae_col_ent_idx = \
+                    self._select_predicates_by_score_search(
+                    huge_matrix, colind2info, score_function)
+            logging.info(f"Predicate Selection Done in {time.time()-s} seconds.")
+            logging.info("Final AE matrix (Add): {}".format(self.ae_matrix_tgt[:, :, 0]))
+            if self.ae_matrix_tgt.shape[-1] == 2:
+                logging.info("Final AE matrix (Del): {}".format(self.ae_matrix_tgt[:, :, 1]))
+            logging.info("Final (Ordered) Effect Predicates: {}".format(self.ae_col_names_all))
+            # For efficiency, just prune it, no need to ground again
+            # Note, remeber to keep the precondition only predicates in initial predicates
+            if CFG.neupi_pred_search_dataset == 1:
+                # only needs to prune the atom dataset
+                atom_dataset = utils.prune_ground_atom_dataset(
+                    atom_dataset_part,
+                    self._learned_predicates | self._initial_predicates)
+            else:
+                # needs to ground again from the beginning
+                atom_dataset = utils.add_ground_atom_dataset(
+                    init_atom_traj,
+                    self._learned_predicates)
+            logging.info("Learning NSRT from the learned predicates.")
+        else:
+            logging.info("Loading Neural Predicates from JSON...")
+            self.load_from_json()
+            if not CFG.neupi_gt_sampler:
+                logging.info("Re-Learning NSRT (sampler) from the dataset.")
+                learning_trajectories = dataset.trajectories[:int(len(dataset.trajectories) * \
+                                                                  CFG.neupi_learning_dataset)]
+                logging.info(f"Learning NSRT from {len(learning_trajectories)} trajectories.")
+                atom_dataset = utils.create_ground_atom_dataset(
+                    learning_trajectories, self._learned_predicates | self._initial_predicates
+                )
+        # Finally, learn NSRTs via superclass, using all the kept predicates.
+        annotations = None
+        if dataset.has_annotations:
+            annotations = dataset.annotations
+        logging.info("Learning NSRTs from the provided atom dataset.")
+        self._learn_nsrts(learning_trajectories,
+                          atom_dataset,
+                          annotations)
+        if CFG.load_neupi_from_json:
+            # no need to save anything
+            return
+        # save everything we get
+        save_path = utils.get_approach_save_path_str()
+        saved_info = {"learned_ae_pred_info": copy.deepcopy(self.learned_ae_pred_info)
+                      }
+        saved_info['node_feature_to_index'] = self._node_feature_to_index
+        saved_info['edge_feature_to_index'] = self._edge_feature_to_index
+        saved_info['node_is_rot'] = self._node_is_rot
+        saved_info['edge_is_rot'] = self._edge_is_rot
+        saved_info['input_normalizers'] = self._input_normalizers
+        # we will save the selected pred info instead of the predicate, since it is neural-related classifier
+        selected_pred = {}
+        selected_pred2dummy = {}
+        for pred in self._learned_predicates:
+            for col, info in colind2info.items():
+                if info[0] == pred:
+                    # this predicate is a template
+                    dummy_pred = info[-1][0]
+                    name = pred.name
+                    types = pred.types
+                    # this predicate is specifically for this one
+                    new_dummy_pred = DummyPredicate(name=name, types=types)
+                    selected_pred2dummy[pred] = new_dummy_pred
+                    # importanty, each dummy pred could have multiple real preds
+                    if dummy_pred in selected_pred:
+                        selected_pred[dummy_pred].append((new_dummy_pred, info[-1][1], info[-1][2]))
+                    else:
+                        selected_pred[dummy_pred] = [(new_dummy_pred, info[-1][1], info[-1][2])]
+                    break
+        saved_info['selected_pred'] = selected_pred
+        # we will save the "dummy" nsrts with the neural predicates replaced by dummy ones with the same name
+        dummy_nsrts = utils.replace_nsrt_predicates(self._nsrts, selected_pred2dummy)
+        saved_info['dummy_nsrts'] = dummy_nsrts
+        # finally, save the info
+        with open(f"{save_path}.neupi_info", "wb") as f:
+            pkl.dump(saved_info, f)
 
     def load(self, online_learning_cycle: Optional[int]) -> None:
         if CFG.load_neupi_from_json:
@@ -2633,15 +2700,3 @@ class BilevelLearningApproach(NSRTLearningApproach):
         except PlanningTimeout as e:
             raise ApproachTimeout(e.args[0], e.info)
         return intermidiate
-
-    def total_mcts_iterations(self) -> int:
-        """Get the total number of MCTS iterations performed.
-        
-        Returns:
-            Total number of MCTS tree search iterations
-        """
-        return self.total_mcts_iterations
-
-    def reset_mcts_iteration_count(self) -> None:
-        """Reset the MCTS iteration counter to 0."""
-        self.total_mcts_iterations = 0
