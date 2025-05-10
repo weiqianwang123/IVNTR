@@ -171,8 +171,8 @@ class OpenAIModel():
             assert "OPENAI_API_KEY" in os.environ
             key = os.environ["OPENAI_API_KEY"]
 
-    @retry(wait=wait_random_exponential(min=1, max=60),
-           stop=stop_after_attempt(10))
+    # @retry(wait=wait_random_exponential(min=1, max=60),
+    #        stop=stop_after_attempt(10))
     def call_openai_api(self,
                         messages: list,
                         model: str = "gpt-4",
@@ -181,7 +181,9 @@ class OpenAIModel():
                         temperature: float = 0.2,
                         verbose: bool = False) -> str:  # pragma: no cover
         """Make an API call to OpenAI."""
+        print(f"Calling OpenAI API with model: {model}")
         client = openai.OpenAI()
+        print(f"initializing client")
         completion = client.chat.completions.create(
             model=model,
             messages=messages,
@@ -189,6 +191,7 @@ class OpenAIModel():
             max_tokens=max_tokens,
             temperature=temperature,
         )
+        print(f"OpenAI API response: {completion}")
         if verbose:
             logging.debug(f"OpenAI API response: {completion}")
         assert len(completion.choices) == 1

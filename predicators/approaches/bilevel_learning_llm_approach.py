@@ -55,6 +55,13 @@ from predicators.structs import Dataset, GroundAtom, GroundAtomTrajectory, LowLe
     Action
 from predicators.structs import NSRT, PNAD, GroundAtomTrajectory, \
     LowLevelTrajectory, ParameterizedOption, Predicate, Segment, Task
+from predicators.pretrained_model_interface import OpenAILLM, LargeLanguageModel
+import torch
+import logging
+import re
+from typing import List, Dict, Tuple, Optional, Set
+from predicators.structs import Type, ParameterizedOption
+from predicators.settings import CFG
 
 _Output = TypeVar("_Output")  # a generic type for the output of this GNN
 
@@ -223,16 +230,14 @@ def train_val_model_single(curr_pred, ent_idx, pred_save_path, ae_vector, iterat
 ################################################################################
 
 
-class BilevelLearningApproach(NSRTLearningApproach):
-    """Bilevel learning approach with iteration counting."""
+class BilevelLearningLLMApproach(NSRTLearningApproach):
+   
 
     def __init__(self, initial_predicates: Set[Predicate],
                  initial_options: Set[ParameterizedOption], types: Set[Type],
                  action_space: Box, train_tasks: List[Task]) -> None:
         super().__init__(initial_predicates, initial_options, types,
-                        action_space, train_tasks)
-        self.total_iterations = 0  # Add counter for total iterations
-        self.predicate_invention_iterations = 0  # Add counter for predicate invention
+                         action_space, train_tasks)
         self._sorted_options = sorted(self._initial_options,
                                       key=lambda o: o.name)
         for option in self._sorted_options:
@@ -1455,9 +1460,7 @@ class BilevelLearningApproach(NSRTLearningApproach):
     def learn_neural_predicates(
         self, dataset: Dataset
     ) -> Tuple[List[GroundAtomTrajectory], Dict[Predicate, float]]:
-        """Learn neural predicates with MCTS iteration counting."""
-        total_mcts_iterations = 0  # Counter for total MCTS iterations
-        
+        """Learn the Neural predicates by Action Effect Martix Identification."""
         logging.info("Constructing NeuPi Data...")
         # 1. Generate data from the dataset. This is general
         data, trajectories, init_atom_traj = self._generate_data_from_dataset(dataset)
@@ -1919,12 +1922,6 @@ class BilevelLearningApproach(NSRTLearningApproach):
                                   'ae_vecs': self.learned_ae_pred_info[curr_pred]['ae_vecs'][i],
                                   'scores': self.learned_ae_pred_info[curr_pred]['scores'][i],
                                   'quantifiers': self.learned_ae_pred_info[curr_pred]['quantifiers'][i]}, f)
-
-            # After MCTS search, get the iteration count
-            if hasattr(self, '_searcher') and self._searcher is not None:
-                total_mcts_iterations += self._searcher.get_iteration_count()
-        
-        logging.info(f"Total MCTS iterations across all predicates: {total_mcts_iterations}")
         return trajectories, init_atom_traj
 
     def _get_predicate_identifier(
@@ -2312,46 +2309,118 @@ class BilevelLearningApproach(NSRTLearningApproach):
         return set(final_predicates), last_matrix, final_predicates, last_ent_idx
     
     def learn_from_offline_dataset(self, dataset: Dataset) -> None:
-        """Learn from offline dataset with iteration counting."""
-        # Reset counters at the start
-        self.total_iterations = 0
-        self.predicate_invention_iterations = 0
-        
-        # Step 1: Initializing individual NN predicates by Bi-Level Learning
-        logging.info("Step 1: Initializing individual NN predicates")
-        
-        # Track iterations for each predicate
-        for pred in self._get_current_predicates():
-            self.predicate_invention_iterations += 1
-            logging.info(f"Processing predicate {pred.name}, iteration {self.predicate_invention_iterations}")
-            
-            # Your existing predicate learning code here
-            # ... existing code ...
-            
-            # Update total iterations
-            self.total_iterations += 1
-
-        # Log final iteration counts
-        logging.info(f"Total predicate invention iterations: {self.predicate_invention_iterations}")
-        logging.info(f"Total iterations across all processes: {self.total_iterations}")
-
-    def get_iteration_counts(self) -> Dict[str, int]:
-        """Get the current iteration counts.
-        
-        Returns:
-            Dictionary containing:
-            - total_iterations: Total iterations across all processes
-            - predicate_invention_iterations: Iterations in predicate invention
-        """
-        return {
-            "total_iterations": self.total_iterations,
-            "predicate_invention_iterations": self.predicate_invention_iterations
-        }
-
-    def reset_iteration_counts(self) -> None:
-        """Reset all iteration counters to 0."""
-        self.total_iterations = 0
-        self.predicate_invention_iterations = 0
+        #  Step 1: Initializing individual NN predicates by Bi-Level Learning
+        if not CFG.load_neupi_from_json:
+            s = time.time()
+            learning_trajectories, init_atom_traj = self.learn_neural_predicates(dataset)
+            logging.info(f"Neural Predicate Invention Done in {time.time()-s} seconds.")
+            if CFG.neupi_save_init_atom_dataset:
+                save_path = utils.get_approach_save_path_str()
+                with open(f"{save_path}_.init_atom_traj", "wb") as f:
+                    pkl.dump(init_atom_traj, f)
+            # Purne Equivalence Classes
+            # Step 2: Get all the columns into one big matrix and their info, including provided
+            num_traj = len(learning_trajectories)
+            traj4equavalence = [learning_trajectories[i] for i in range(int(num_traj * CFG.neupi_equ_dataset))]
+            huge_matrix, colind2info = self._get_invented_pruned_predicates(traj4equavalence)
+            all_pred = set(info[0] for info in colind2info.values())
+            new_predicate = set()
+            for pred in list(all_pred):
+                if pred in self._initial_predicates:
+                    continue
+                new_predicate.add(pred)
+            # Step 3: Compute the AAAI Objective for each "possible" matrix/predicate set
+            # 1. construct atom dataset for all the predicates
+            traj4search = [init_atom_traj[i] for i in range(int(num_traj * CFG.neupi_pred_search_dataset))]
+            s = time.time()
+            atom_dataset_part = utils.add_ground_atom_dataset(
+                            traj4search,
+                            new_predicate)
+            # remeber to add the initial predicates, which may not in the effect matrix (unchanged)
+            all_pred = all_pred | self._initial_predicates
+            # 2. Score Function Def
+            # Note that need to use full _train_tasks
+            score_function = _OperatorBeliefScoreFunction(
+                    atom_dataset_part, self._train_tasks, self.ae_row_names,
+                    CFG.neupi_aaai_metric)
+            self._learned_predicates, self.ae_matrix_tgt, self.ae_col_names_all, self.ae_col_ent_idx = \
+                    self._select_predicates_by_score_search(
+                    huge_matrix, colind2info, score_function)
+            logging.info(f"Predicate Selection Done in {time.time()-s} seconds.")
+            logging.info("Final AE matrix (Add): {}".format(self.ae_matrix_tgt[:, :, 0]))
+            if self.ae_matrix_tgt.shape[-1] == 2:
+                logging.info("Final AE matrix (Del): {}".format(self.ae_matrix_tgt[:, :, 1]))
+            logging.info("Final (Ordered) Effect Predicates: {}".format(self.ae_col_names_all))
+            # For efficiency, just prune it, no need to ground again
+            # Note, remeber to keep the precondition only predicates in initial predicates
+            if CFG.neupi_pred_search_dataset == 1:
+                # only needs to prune the atom dataset
+                atom_dataset = utils.prune_ground_atom_dataset(
+                    atom_dataset_part,
+                    self._learned_predicates | self._initial_predicates)
+            else:
+                # needs to ground again from the beginning
+                atom_dataset = utils.add_ground_atom_dataset(
+                    init_atom_traj,
+                    self._learned_predicates)
+            logging.info("Learning NSRT from the learned predicates.")
+        else:
+            logging.info("Loading Neural Predicates from JSON...")
+            self.load_from_json()
+            if not CFG.neupi_gt_sampler:
+                logging.info("Re-Learning NSRT (sampler) from the dataset.")
+                learning_trajectories = dataset.trajectories[:int(len(dataset.trajectories) * \
+                                                                  CFG.neupi_learning_dataset)]
+                logging.info(f"Learning NSRT from {len(learning_trajectories)} trajectories.")
+                atom_dataset = utils.create_ground_atom_dataset(
+                    learning_trajectories, self._learned_predicates | self._initial_predicates
+                )
+        # Finally, learn NSRTs via superclass, using all the kept predicates.
+        annotations = None
+        if dataset.has_annotations:
+            annotations = dataset.annotations
+        logging.info("Learning NSRTs from the provided atom dataset.")
+        self._learn_nsrts(learning_trajectories,
+                          atom_dataset,
+                          annotations)
+        if CFG.load_neupi_from_json:
+            # no need to save anything
+            return
+        # save everything we get
+        save_path = utils.get_approach_save_path_str()
+        saved_info = {"learned_ae_pred_info": copy.deepcopy(self.learned_ae_pred_info)
+                      }
+        saved_info['node_feature_to_index'] = self._node_feature_to_index
+        saved_info['edge_feature_to_index'] = self._edge_feature_to_index
+        saved_info['node_is_rot'] = self._node_is_rot
+        saved_info['edge_is_rot'] = self._edge_is_rot
+        saved_info['input_normalizers'] = self._input_normalizers
+        # we will save the selected pred info instead of the predicate, since it is neural-related classifier
+        selected_pred = {}
+        selected_pred2dummy = {}
+        for pred in self._learned_predicates:
+            for col, info in colind2info.items():
+                if info[0] == pred:
+                    # this predicate is a template
+                    dummy_pred = info[-1][0]
+                    name = pred.name
+                    types = pred.types
+                    # this predicate is specifically for this one
+                    new_dummy_pred = DummyPredicate(name=name, types=types)
+                    selected_pred2dummy[pred] = new_dummy_pred
+                    # importanty, each dummy pred could have multiple real preds
+                    if dummy_pred in selected_pred:
+                        selected_pred[dummy_pred].append((new_dummy_pred, info[-1][1], info[-1][2]))
+                    else:
+                        selected_pred[dummy_pred] = [(new_dummy_pred, info[-1][1], info[-1][2])]
+                    break
+        saved_info['selected_pred'] = selected_pred
+        # we will save the "dummy" nsrts with the neural predicates replaced by dummy ones with the same name
+        dummy_nsrts = utils.replace_nsrt_predicates(self._nsrts, selected_pred2dummy)
+        saved_info['dummy_nsrts'] = dummy_nsrts
+        # finally, save the info
+        with open(f"{save_path}.neupi_info", "wb") as f:
+            pkl.dump(saved_info, f)
 
     def load(self, online_learning_cycle: Optional[int]) -> None:
         if CFG.load_neupi_from_json:
@@ -2634,14 +2703,340 @@ class BilevelLearningApproach(NSRTLearningApproach):
             raise ApproachTimeout(e.args[0], e.info)
         return intermidiate
 
-    def total_mcts_iterations(self) -> int:
-        """Get the total number of MCTS iterations performed.
-        
-        Returns:
-            Total number of MCTS tree search iterations
-        """
-        return self.total_mcts_iterations
+  
 
-    def reset_mcts_iteration_count(self) -> None:
-        """Reset the MCTS iteration counter to 0."""
-        self.total_mcts_iterations = 0
+
+
+import os
+import re
+import logging
+from typing import List, Set, Dict, Tuple
+
+import openai               # ⬅️ new direct import
+import torch
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Optional helper if you still want the “two-channel” format
+def one2two(vec: torch.Tensor, out_channels: int = 2) -> torch.Tensor:
+    """
+    Convert a single-channel vector (0/1/2) into a two-channel (add|delete) matrix.
+    add  := 1 → [1, 0]
+    del  := 2 → [0, 1]
+    none := 0 → [0, 0]
+    """
+    add  = (vec == 1).long().unsqueeze(-1)
+    dele = (vec == 2).long().unsqueeze(-1)
+    return torch.cat([add, dele], dim=-1)  # shape: [N, 2]
+# ────────────────────────────────────────────────────────────────────────────────
+
+
+class LLMEffectVectorGenerator:
+    """LLM-based generation of action-predicate effect vectors—self-contained."""
+
+    # --------------------------------------------------------------------- init
+    def __init__(
+        self,
+        sorted_options: List["ParameterizedOption"],
+        types: Set["Type"],
+        config: Dict = None,
+    ):
+        self._sorted_options = sorted_options
+        self._types          = types
+
+        # ───── Default + user configuration
+        self.config = {
+            # OpenAI chat parameters
+            "model":          "gpt-4o",
+            "temperature":    0.7,
+            "max_tokens":     512,
+            "system_prompt":  (
+                "You are a helpful assistant that generates action effect vectors "
+                "for predicates."
+            ),
+            # Retry behaviour
+            "retry_attempts": 3,
+            "timeout":        30.0,   # seconds
+            # API key (optional❟ falls back to env-var)
+            "api_key":        "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",
+            **(config or {}),
+        }
+
+        # ───── Plug the key into the SDK once
+        openai.api_key = (
+            self.config["api_key"] or os.getenv("OPENAI_API_KEY", "")
+        )
+        if not openai.api_key:
+            raise RuntimeError(
+                "OpenAI API key missing. "
+                "Pass it via config={'api_key': ...} or set OPENAI_API_KEY."
+            )
+
+        # Re-usable HTTP client with custom timeout
+        self._client = openai.OpenAI(
+            api_key=openai.api_key,
+            timeout=self.config["timeout"],
+        )
+
+    # ------------------------------------------------------------------ prompt
+    def _create_prompt(
+        self,
+        pred_name: str,
+        pred_types: List["Type"],
+        pred_description: str | None = None,
+    ) -> str:
+        actions_str = "\n".join(
+            f"{i+1}. {opt.name} ({[t.name for t in opt.types]})"
+            for i, opt in enumerate(self._sorted_options)
+        )
+
+        prompt  = (
+            f"Given a predicate '{pred_name}' that operates on types "
+            f"{[t.name for t in pred_types]}"
+        )
+        if pred_description:
+            prompt += f"\nDescription: {pred_description}"
+
+        prompt += f"""
+        Available actions:
+        {actions_str}
+
+        For each action, specify if it:
+        1. Adds the predicate (1)
+        2. Deletes the predicate (2)
+        3. Has no effect (0)
+
+        Return the effect vectors in the exact format:
+        [[a11, a12, …, a1N],   # pattern 1
+        [a21, a22, …, a2N]]   # pattern 2
+        where N = number of actions and each aᵢⱼ ∈ {{0,1,2}}.
+        """
+        return prompt.strip()
+
+    # ----------------------------------------------------------- parse results
+    def _parse_llm_response(self, response_text: str) -> List[torch.Tensor]:
+        """Extract [[...]] list from the LLM reply and convert to tensors."""
+        try:
+            vector_pattern = r"\[\[.*?\]\]"
+            match = re.search(vector_pattern, response_text, re.S)
+            if not match:
+                raise ValueError("vector block ([[...]]]) not found")
+
+            raw_vectors = eval(match.group(0))  # noqa: S307 (controlled input)
+
+            tensors: list[torch.Tensor] = []
+            for vec in raw_vectors:
+                if len(vec) != len(self._sorted_options):
+                    logging.warning(
+                        "Vector length mismatch (%d ≠ %d); skipping",
+                        len(vec), len(self._sorted_options),
+                    )
+                    continue
+                t = torch.tensor(vec, dtype=torch.long)
+                # Optional two-channel expansion
+                if os.getenv("NEUPI_AE_MATRIX_CHANNEL", "1") == "2":
+                    t = one2two(t, 2)
+                tensors.append(t)
+
+            return tensors
+
+        except Exception as err:  # pragma: no cover
+            logging.error("Failed to parse LLM response: %s", err)
+            return []
+
+    # --------------------------------------------------------- public helpers
+    def get_effect_vectors(
+        self,
+        pred_name: str,
+        pred_types: List["Type"],
+        pred_description: str | None = None,
+    ) -> List[torch.Tensor]:
+        """Query the LLM and return candidate effect vectors (torch tensors)."""
+        prompt = self._create_prompt(pred_name, pred_types, pred_description)
+
+        for attempt in range(1, self.config["retry_attempts"] + 1):
+            try:
+                chat = self._client.chat.completions.create(
+                    model       = self.config["model"],
+                    temperature = self.config["temperature"],
+                    max_tokens  = self.config["max_tokens"],
+                    messages=[
+                        {"role": "system", "content": self.config["system_prompt"]},
+                        {"role": "user",   "content": prompt},
+                    ],
+                )
+                answer = chat.choices[0].message.content
+                vectors = self._parse_llm_response(answer)
+                if vectors:
+                    return vectors
+                raise ValueError("Parsed zero valid vectors")
+
+            except Exception as err:
+                logging.error("Attempt %d/%d failed: %s",
+                              attempt, self.config["retry_attempts"], err)
+                if attempt == self.config["retry_attempts"]:
+                    raise
+        return []  # shouldn’t reach here
+
+    # --------------------------------------------------------- vector checks
+    def validate_effect_vectors(
+        self,
+        vectors: List[torch.Tensor],
+        constraints: List[Tuple],
+    ) -> List[torch.Tensor]:
+        """Filter vectors that violate any given (simple) constraints."""
+        valid = []
+        for vec in vectors:
+            if all(self._check_constraint(vec, c) for c in constraints):
+                valid.append(vec)
+        return valid
+
+    @staticmethod
+    def _check_constraint(vec: torch.Tensor, constraint: Tuple) -> bool:
+        """Only understands ('position', row, col_or_chan, chan_or_val, val)."""
+        if constraint[0] != "position":
+            return True
+        _, row, col, channel, value = constraint
+        try:
+            return vec[row, channel] == value
+        except Exception:   # out-of-range, shape mismatch, ...
+            return False
+
+
+
+
+def test_llm_effect_vector_generator():
+    """Test function for LLMEffectVectorGenerator."""
+    from predicators.structs import Type, ParameterizedOption, Box, Action
+    import numpy as np
+    from dotenv import load_dotenv
+    import os
+    
+    # Load environment variables from .env file
+    load_dotenv()
+    os.environ["OPENAI_API_KEY"] = "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"
+    # Verify API key is set
+    if not os.getenv("OPENAI_API_KEY"):
+        raise ValueError("OPENAI_API_KEY not found in environment variables. Please set it in .env file or environment.")
+    
+    # Create dummy types with feature names
+    types = {
+        Type("robot", feature_names=["x", "y", "z"]),
+        Type("object", feature_names=["x", "y", "z"]),
+        Type("target", feature_names=["x", "y", "z"])
+    }
+    
+    # Create dummy options
+    options = [
+        ParameterizedOption(
+            name="pick",
+            types=[Type("robot", feature_names=["x", "y", "z"]), 
+                  Type("object", feature_names=["x", "y", "z"])],
+            params_space=Box(low=np.array([0.0]), high=np.array([1.0])),
+            policy=lambda s, o, p: Action(np.array([0.0])),
+            initiable=lambda s, o, p: True,
+            terminal=lambda s, o, p: True
+        ),
+        ParameterizedOption(
+            name="place",
+            types=[Type("robot", feature_names=["x", "y", "z"]), 
+                  Type("object", feature_names=["x", "y", "z"]),
+                  Type("target", feature_names=["x", "y", "z"])],
+            params_space=Box(low=np.array([0.0]), high=np.array([1.0])),
+            policy=lambda s, o, p: Action(np.array([0.0])),
+            initiable=lambda s, o, p: True,
+            terminal=lambda s, o, p: True
+        ),
+        ParameterizedOption(
+            name="move",
+            types=[Type("robot", feature_names=["x", "y", "z"]), 
+                  Type("target", feature_names=["x", "y", "z"])],
+            params_space=Box(low=np.array([0.0]), high=np.array([1.0])),
+            policy=lambda s, o, p: Action(np.array([0.0])),
+            initiable=lambda s, o, p: True,
+            terminal=lambda s, o, p: True
+        )
+    ]
+
+    # Initialize the generator
+    generator = LLMEffectVectorGenerator(
+        sorted_options=options,
+        types=types,
+        config={
+            'model': 'gpt-4o-mini',
+            'temperature': 0.7,
+            'max_tokens': 1000,
+            'system_prompt': "You are a helpful assistant that generates action effect vectors for predicates.",
+            'retry_attempts': 3
+        }
+    )
+
+    # Test cases
+    test_cases = [
+        {
+            "predicate": "holding",
+            "types": [Type("robot", feature_names=["x", "y", "z"]), 
+                     Type("object", feature_names=["x", "y", "z"])],
+            "description": "Robot is holding an object"
+        },
+        {
+            "predicate": "on",
+            "types": [Type("object", feature_names=["x", "y", "z"]), 
+                     Type("target", feature_names=["x", "y", "z"])],
+            "description": "Object is on top of target"
+        },
+        {
+            "predicate": "clear",
+            "types": [Type("object", feature_names=["x", "y", "z"])],
+            "description": "Object has nothing on top of it"
+        }
+    ]
+
+    # Run tests for each case
+    for case in test_cases:
+        print(f"\n{'='*50}")
+        print(f"Testing predicate: {case['predicate']}")
+        print(f"Types: {[t.name for t in case['types']]}")
+        print(f"Description: {case['description']}")
+        print(f"{'='*50}")
+
+        try:
+            # Get effect vectors
+            vectors = generator.get_effect_vectors(
+                pred_name=case['predicate'],
+                pred_types=case['types'],
+                pred_description=case['description']
+            )
+
+            # Print generated vectors
+            print("\nGenerated effect vectors:")
+            for i, vec in enumerate(vectors):
+                print(f"\nVector {i+1}:")
+                if vec.shape[-1] == 2:  # Two-channel format
+                    print("Add effects:", vec[:, 0].tolist())
+                    print("Delete effects:", vec[:, 1].tolist())
+                else:  # Single-channel format
+                    print("Effects:", vec.tolist())
+
+            # Test validation
+            print("\nTesting vector validation...")
+            constraints = [
+                ('position', 0, 0, 0, 1),  # First action must add the predicate
+                ('position', 1, 0, 1, 0)   # Second action must not delete the predicate
+            ]
+            
+            valid_vectors = generator.validate_effect_vectors(vectors, constraints)
+            print(f"\nValid vectors after constraint checking: {len(valid_vectors)}")
+            for i, vec in enumerate(valid_vectors):
+                print(f"\nValid Vector {i+1}:")
+                if vec.shape[-1] == 2:
+                    print("Add effects:", vec[:, 0].tolist())
+                    print("Delete effects:", vec[:, 1].tolist())
+                else:
+                    print("Effects:", vec.tolist())
+
+        except Exception as e:
+            print(f"\nError during testing: {e}")
+            continue
+
+if __name__ == "__main__":
+    test_llm_effect_vector_generator()

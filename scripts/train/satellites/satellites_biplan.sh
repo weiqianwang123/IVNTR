@@ -29,7 +29,7 @@ do
         --timeout 5 \
         --approach_dir "saved_approaches/demo/satellites/ivntr_$seed" \
         --neupi_save_path "saved_approaches/demo/satellites/ivntr_$seed" \
-        --log_file /home/bowenli2/ws/NeuroSym/NeuPI/logs/demo/satellites/ivntr_ood_$seed.log; then
+        --log_file /home/qianwei/IVNTR/logs/satellites/ivntr_ood_$seed.log; then
         echo "Seed $seed completed successfully."
     else
         echo "Seed $seed encountered an error."

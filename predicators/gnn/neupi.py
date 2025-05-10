@@ -1546,31 +1546,28 @@ class MCTSNode:
             raise ValueError("Node is fully expanded. Should not be considered")
 
 class HierachicalMCTSearcher(abc.ABC):
-    """Uniformally sample the vectors."""
+    """Hierarchical Monte Carlo Tree Search implementation."""
 
     def __init__(self, 
                  dim_num: int, \
                  frontier_max_level: int, \
                  guidance_th: float) -> None:
-        self.visits = 0  # Total visits for UCT calculation
-        self.guidance_th = min(guidance_th * dim_num / 2, 0.5)
+        self.dim_num = dim_num
         self.frontier_max_level = frontier_max_level
-        root = MCTSNode(np.zeros(dim_num, dtype=np.int32), 0)
-        root.guidance = np.zeros(root.state.shape)
-        self.global_zero_loss = np.zeros(root.state.shape)
-        root.update_value(self.global_zero_loss, self.guidance_th)
-        self.frontier = [root]
-        self.evaluated_values = {tuple(root.state)}
-
+        self.guidance_th = guidance_th
+        self.frontier = []  # List of MCTSNode
+        self.iteration_count = 0  # Add counter for iterations
+        
     def uct_selection(self, nodes, bs):
         # Use NumPy for efficient computation of UCT values
+        self.iteration_count += 1  # Increment counter on each selection
         visits = np.array([node.visits for node in nodes])
         values = np.array([node.value for node in nodes])
         
         # Avoid division by zero by setting a small value for nodes with zero visits
         visits = np.where(visits == 0, 1e-5, visits)
         
-        total_visits = np.log(self.visits + 1)
+        total_visits = np.log(self.iteration_count + 1)
         
         # UCT calculation
         uct_values = values / visits + 14.1 * self.guidance_th * np.sqrt(total_visits / visits)
@@ -1585,6 +1582,7 @@ class HierachicalMCTSearcher(abc.ABC):
     
     def update_value(self, state, guidance):
         # Update zero loss
+        self.iteration_count += 1  # Increment counter on each value update
         if (guidance != np.inf).all():
             # satisfiable
             zero_mask = state == 0
@@ -1592,17 +1590,18 @@ class HierachicalMCTSearcher(abc.ABC):
             for node in self.frontier:
                 if (node.state == state).all():
                     node.guidance = guidance.copy()
-                node.update_value(self.global_zero_loss / self.visits, self.guidance_th)
+                node.update_value(self.global_zero_loss / self.iteration_count, self.guidance_th)
         else:
             # unsatisfiable
             for node in self.frontier:
                 if (node.state == state).all():
                     node.guidance = np.ones_like(node.guidance)
-                    node.update_value(self.global_zero_loss / self.visits, self.guidance_th)
+                    node.update_value(self.global_zero_loss / self.iteration_count, self.guidance_th)
         
         self.update_front()
 
     def update_front(self):
+        self.iteration_count += 1  # Increment counter on each frontier update
         new_frontier = []
         for node in self.frontier:
             if (not node.is_fully_expanded()) and (node.value > -np.inf):
@@ -1615,6 +1614,7 @@ class HierachicalMCTSearcher(abc.ABC):
     
     def propose(self):
         # propose the next node to evaluate
+        self.iteration_count += 1  # Increment counter on each proposal
         self.update_front()
         if len(self.frontier) == 0:
             return None
@@ -1624,7 +1624,6 @@ class HierachicalMCTSearcher(abc.ABC):
                 self.update_front()
                 if self.frontier == []:
                     return None
-                self.visits += 1
                 selected_nodes = self.uct_selection(self.frontier, 1)
                 # logging.info(f"Selected nodes: {[node.state for node in selected_nodes]}")
                 # 2. Expand the selected nodes, add to frontier, and evaluate
@@ -1641,3 +1640,11 @@ class HierachicalMCTSearcher(abc.ABC):
                             # logging.info(f"Adding to Frontier")
                             self.frontier.append(child)
                         return child.state
+
+    def get_iteration_count(self) -> int:
+        """Get the total number of iterations performed."""
+        return self.iteration_count
+
+    def reset_iteration_count(self) -> None:
+        """Reset the iteration counter to 0."""
+        self.iteration_count = 0
