@@ -2757,7 +2757,7 @@ class LLMEffectVectorGenerator:
             "retry_attempts": 3,
             "timeout":        30.0,   # seconds
             # API key (optional❟ falls back to env-var)
-           
+            "api_key":        "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",
             **(config or {}),
         }
 
@@ -2913,7 +2913,7 @@ def test_llm_effect_vector_generator():
     
     # Load environment variables from .env file
     load_dotenv()
-    
+    os.environ["OPENAI_API_KEY"] = "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"
     # Verify API key is set
     if not os.getenv("OPENAI_API_KEY"):
         raise ValueError("OPENAI_API_KEY not found in environment variables. Please set it in .env file or environment.")
