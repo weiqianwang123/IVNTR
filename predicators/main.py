@@ -43,6 +43,7 @@ from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
 
 import dill as pkl
+from dotenv import load_dotenv
 
 from predicators import utils
 import torch.multiprocessing as mp
@@ -60,6 +61,9 @@ from predicators.structs import Dataset, InteractionRequest, \
     InteractionResult, Metrics, Response, Task, Video, \
     LowLevelTask
 from predicators.teacher import Teacher, TeacherInteractionMonitorWithVideo
+
+# Load environment variables from .env file
+load_dotenv()
 
 assert os.environ.get("PYTHONHASHSEED") == "0", \
         "Please add `export PYTHONHASHSEED=0` to your bash profile!"

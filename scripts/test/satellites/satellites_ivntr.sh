@@ -18,7 +18,7 @@ do
         --exclude_domain_feat "none" \
         --neupi_do_normalization False \
         --num_train_tasks 500 \
-        --domain_aaai_thresh 100000 \
+        --domain_aaai_thresh 300000 \
         --neupi_entropy_w 0.5 \
         --neupi_loss_w 0.5 \
         --neupi_equ_dataset 1.0 \
@@ -29,8 +29,8 @@ do
         --load_neupi_from_json True \
         --timeout 5 \
         --approach_dir "saved_approaches/open_models/satellites/ivntr_$seed" \
-        --neupi_save_path "saved_approaches/open_models/satellites/ivntr_$seed" \
-        --log_file logs/satellites/ivntr_ood_$seed.log; then
+        --neupi_save_path "saved_approaches/demo/satellites/ivntr_$seed" \
+        --log_file logs/satellites/ivntr_ood_test_$seed.log; then
         echo "Seed $seed completed successfully."
     else
         echo "Seed $seed encountered an error."
