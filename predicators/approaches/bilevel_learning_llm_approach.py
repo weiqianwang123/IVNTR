@@ -680,7 +680,7 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
 
     def gen_ae_vectors4pred(self, iteration: int, curr_pred: DummyPredicate, ent_idx: List[int], pred_save_path: str, \
                                     pred_config: Dict, data: List[Tuple[State, Set[GroundAtom], \
-                                    State, Set[GroundAtom], _Option, str]], symbolic_model: HierachicalMCTSearcher) \
+                                    State, Set[GroundAtom], _Option, str]], symbolic_model: HierachicalMCTSearcher,llm_generator: Optional[LLMEffectVectorGenerator]=None) \
         -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Generate a bunch of initial binary action effect vector for the tgt predicate.
@@ -701,9 +701,9 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
             self.learned_ae_pred_info[curr_pred]['gt_ae_vecs'] = []
         else:
             sat_vectors = self.gen_sat_vec(curr_pred, pred_config["batch_vect_num"], \
-                            pred_config["matrix_vec_try"], symbolic_model)
+                            pred_config["matrix_vec_try"], symbolic_model,llm_generator)
             
-        if not len(sat_vectors):
+        if not len(sat_vec tors):
             logging.info("No more sat matrixes can be generated at iteration {}!".format(iteration))
             return torch.tensor([]), torch.tensor([]), [], []
         curr_ae_vectors = sat_vectors
@@ -782,7 +782,8 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
     def gen_sat_vec(self, pred: DummyPredicate, \
                     max_num: int, \
                     max_samples: int, \
-                    searcher: Optional[HierachicalMCTSearcher]=None) \
+                    searcher: Optional[HierachicalMCTSearcher]=None,
+                    llm_generator: Optional[LLMEffectVectorGenerator]=None) \
                     -> List[torch.Tensor]:
         """
         Generate the action effect matrix guided by entropy.
@@ -815,8 +816,15 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                 else:
                     raise ValueError('Unknown constraint type')
             
-            if searcher is not None:
-                symbolic_proposal = searcher.propose()
+            if llm_generator is not None:
+                hint_txt = constraints_to_hint(
+                    pred_name = pred.name,
+                    row_names = self.ae_row_names,
+                    constraints = constraints,
+                    channels = channels,
+                )
+
+                symbolic_proposal = llm_generator.generate(hint=hint_txt)
                 logging.info(f"Symbolic proposal: {symbolic_proposal}")
                 if symbolic_proposal is None:
                     return sat_vectors
@@ -845,11 +853,11 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                                 matrix[row, col, channel] = 1
                 sat_vectors.append(matrix[:, 0])
             else:
-                assert searcher is not None, "No satisfying vector found."
-                state = symbolic_proposal.copy()
-                guidance = np.array([np.inf for _ in range(len(self.ae_row_names))])
-                # unsatisfiable node, update searcher
-                searcher.update_value(state, guidance)
+                assert llm_generator is not None, "No satisfying vector found."
+                # state = symbolic_proposal.copy()
+                # guidance = np.array([np.inf for _ in range(len(self.ae_row_names))])
+                # # unsatisfiable node, update searcher
+                # llm_generator.update_value(state, guidance)
                 logging.info(f"Vector not satisfiable.")
         return sat_vectors
             
@@ -1459,10 +1467,7 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
         """Learn the Neural predicates by Action Effect Martix Identification."""
         logging.info("Constructing NeuPi Data...")
         total_mcts_iterations = 0
-        llm_generator = LLMEffectVectorGenerator(
-            sorted_options=list(self._initial_options),
-            known_predicates=self._initial_predicates
-        )
+       
         # 1. Generate data from the dataset. This is general
         data, trajectories, init_atom_traj = self._generate_data_from_dataset(dataset)
         # 2. Setup the input fields for the neural predicate, this is general
@@ -1560,12 +1565,17 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                                         pred_config['architecture'],
                                         self._node_feature_to_index,
                                         self._edge_feature_to_index)
+            llm_generator = LLMEffectVectorGenerator(
+                target_pred=curr_pred,
+                sorted_options=list(self._initial_options),
+                other_predicates=self._initial_predicates,
+                domain_desc=""
+            )
             symbolic_search_model = HierachicalMCTSearcher(
                                             len(self.ae_row_names),
                                             pred_config['search_tree_max_level'], \
                                             pred_config['guidance_thresh'])
             self.learned_ae_pred_info[curr_pred]['model'] = predicate_neural_model # save the model template
-            llm_generator.guess_by_types(pred_types=curr_pred.types, hint=curr_pred.pretty_str()[1] if hasattr(curr_pred, 'pretty_str') else None)
             # The predicate is trained and will be skipped
             # Or, we directly load it
             if os.path.exists(CFG.neupi_load_pretrained) or pred_config["skip_train"]:
@@ -1635,7 +1645,7 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                     s_time = time.time()
                     iter_ae_vectors, iter_guidance_vecs, iter_val_loss, model_weight_paths = \
                         self.gen_ae_vectors4pred(iteration, curr_pred, ent_idx, pred_save_path, \
-                                                pred_config, data, symbolic_search_model)
+                                                pred_config, data, symbolic_search_model,llm_generator)
                     if len(model_weight_paths) == 0:
                         logging.info(f"Early Stopping at Iteration {iteration}!")
                         break
