@@ -55,6 +55,8 @@ from predicators.structs import Dataset, GroundAtom, GroundAtomTrajectory, LowLe
     Action
 from predicators.structs import NSRT, PNAD, GroundAtomTrajectory, \
     LowLevelTrajectory, ParameterizedOption, Predicate, Segment, Task
+from predicators.llm.llm_for_effect import LLMEffectVectorGenerator
+
 
 _Output = TypeVar("_Output")  # a generic type for the output of this GNN
 
@@ -223,7 +225,7 @@ def train_val_model_single(curr_pred, ent_idx, pred_save_path, ae_vector, iterat
 ################################################################################
 
 
-class BilevelLearningApproach(NSRTLearningApproach):
+class BilevelLearningLLMApproach(NSRTLearningApproach):
     """An approach that invents predicates by learn a GNN that maps continous Graph 
     to discrete space. Using Action Effect Theorem. """
 
@@ -815,6 +817,7 @@ class BilevelLearningApproach(NSRTLearningApproach):
             
             if searcher is not None:
                 symbolic_proposal = searcher.propose()
+                logging.info(f"Symbolic proposal: {symbolic_proposal}")
                 if symbolic_proposal is None:
                     return sat_vectors
                 vector_sampled = one2two(symbolic_proposal, channels)
@@ -848,7 +851,6 @@ class BilevelLearningApproach(NSRTLearningApproach):
                 # unsatisfiable node, update searcher
                 searcher.update_value(state, guidance)
                 logging.info(f"Vector not satisfiable.")
-
         return sat_vectors
             
     def _setup_input_fields(
@@ -1457,6 +1459,10 @@ class BilevelLearningApproach(NSRTLearningApproach):
         """Learn the Neural predicates by Action Effect Martix Identification."""
         logging.info("Constructing NeuPi Data...")
         total_mcts_iterations = 0
+        llm_generator = LLMEffectVectorGenerator(
+            sorted_options=list(self._initial_options),
+            known_predicates=self._initial_predicates
+        )
         # 1. Generate data from the dataset. This is general
         data, trajectories, init_atom_traj = self._generate_data_from_dataset(dataset)
         # 2. Setup the input fields for the neural predicate, this is general
@@ -1559,6 +1565,7 @@ class BilevelLearningApproach(NSRTLearningApproach):
                                             pred_config['search_tree_max_level'], \
                                             pred_config['guidance_thresh'])
             self.learned_ae_pred_info[curr_pred]['model'] = predicate_neural_model # save the model template
+            llm_generator.guess_by_types(pred_types=curr_pred.types, hint=curr_pred.pretty_str()[1] if hasattr(curr_pred, 'pretty_str') else None)
             # The predicate is trained and will be skipped
             # Or, we directly load it
             if os.path.exists(CFG.neupi_load_pretrained) or pred_config["skip_train"]:
@@ -2700,10 +2707,6 @@ class BilevelLearningApproach(NSRTLearningApproach):
         except PlanningTimeout as e:
             raise ApproachTimeout(e.args[0], e.info)
         return intermidiate
-
-
-
-
 
 
 

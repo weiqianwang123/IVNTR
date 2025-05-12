@@ -1,153 +1,170 @@
 import os
 import re
 import logging
-from typing import Any, Callable, Dict, FrozenSet, Iterator, List, Optional, \
-    Sequence, Set, Tuple, TypeVar, Union
-from predicators.structs import Dataset, GroundAtom, GroundAtomTrajectory, LowLevelTrajectoryReward, \
-    _Option, ParameterizedOption, DummyPredicate, NeuralPredicate, Predicate, Object, State, Task, Type, \
-    Action
-import openai             
+from typing import Dict, List, Set, Tuple, Union
+from dotenv import load_dotenv 
 import torch
+import openai
+from predicators.structs import (
+    ParameterizedOption,
+    Predicate,
+    Type,
+)
 
 
 
+# ╔════════════════════════════════════════════════════════════════════════╗
+# ║                         Utility Functions                              ║
+# ╚════════════════════════════════════════════════════════════════════════╝
 
-class LLMEffectVectorGenerator:
-    """LLM-based generation of action-predicate effect vectors—self-contained."""
-    # ────────────────────────────────────────────────────────────────────────────────
-    # Optional helper if you still want the "two-channel" format
-    def one2two(vec: torch.Tensor, out_channels: int = 2) -> torch.Tensor:
-        """
-        Convert a single-channel vector (0/1/2) into a two-channel (add|delete) matrix.
-        add  := 1 → [1, 0]
-        del  := 2 → [0, 1]
-        none := 0 → [0, 0]
-        """
-        add  = (vec == 1).long().unsqueeze(-1)
-        dele = (vec == 2).long().unsqueeze(-1)
-        return torch.cat([add, dele], dim=-1)  # shape: [N, 2]
-    # ────────────────────────────────────────────────────────────────────────────────
-        # --------------------------------------------------------------------- init
+def one2two(vec: torch.Tensor, out_channels: int = 2) -> torch.Tensor:  # noqa: D401
+    """Convert a single‑channel 0/1/2 vector to a two‑channel add|del matrix."""
+    add  = (vec == 1).long().unsqueeze(-1)
+    dele = (vec == 2).long().unsqueeze(-1)
+    return torch.cat([add, dele], dim=-1)  # [N, 2]
+
+
+# ╔════════════════════════════════════════════════════════════════════════╗
+# ║                  LLM‑based Effect Vector Generator                     ║
+# ╚════════════════════════════════════════════════════════════════════════╝
+
+class LLMEffectVectorGenerator():
+    """Ask an LLM to guess predicate–action effect vectors.
+
+    Key changes compared with the prototype:
+    1. **Rich system prompt**:  on instantiation we pack _all_ *known* predicates
+       (initial knowledge) **and** action templates into the system prompt so the
+       LLM has context.
+    2. **Type‑only query**:  `guess_by_types()` lets you request vectors when you
+       *only* know a predicate's argument types (no name yet).
+    """
+
+    # ───────────────────────────────────────────── Constructor ────────────
     def __init__(
         self,
-        sorted_options: List["ParameterizedOption"],
-        types: Set["Type"],
-        config: Dict = None,
-    ):
-        self._sorted_options = sorted_options
-        self._types          = types
-
-        # ───── Default + user configuration
-        self.config = {
-            # OpenAI chat parameters
-            "model":          "gpt-4o",
-            "temperature":    0.7,
-            "max_tokens":     512,
-            "system_prompt":  (
-                "You are a helpful assistant that generates action effect vectors "
-                "for predicates."
-            ),
-            # Retry behaviour
+        sorted_options: List[ParameterizedOption],
+        known_predicates: Set[Predicate],
+    ) -> None:
+        self._sorted_options: List[ParameterizedOption] = sorted_options
+        self._known_predicates: Set[Predicate] = known_predicates or set()
+        load_dotenv('.env.local')
+        # ────── default config ────────────────────────────────────────────
+        self.config: Dict = {
+            "model": "gpt-4o-mini",
+            "temperature": 0.3,
+            "max_tokens": 512,
             "retry_attempts": 3,
-            "timeout":        30.0,   # seconds
-            # API key (optional❟ falls back to env-var)
-            "api_key": "",
-            **(config or {}),
+            "timeout": 30.0,
+            "api_key": "",  # fallback to env‑var
+            **({}),
         }
 
-        # ───── Plug the key into the SDK once
-        openai.api_key = os.getenv('OPENAI_API_KEY')
-            
-        
-
-        print(f"OpenAI API key: {openai.api_key}")
+        # ────── OpenAI SDK initialisation ─────────────────────────────────
+        openai.api_key = self.config.get("api_key") or os.getenv("OPENAI_API_KEY")
         if not openai.api_key:
-            raise RuntimeError(
-                "OpenAI API key missing. "
-                "Pass it via config={'api_key': ...} or set OPENAI_API_KEY."
-            )
+            raise RuntimeError("OpenAI API key missing: add to config or env var.")
 
-        # Re-usable HTTP client with custom timeout
-        self._client = openai.OpenAI(
-            api_key=openai.api_key,
-            timeout=self.config["timeout"],
+        self._client = openai.OpenAI(api_key=openai.api_key, timeout=self.config["timeout"])
+
+        # ────── Compose system prompt once ────────────────────────────────
+        self.system_prompt: str = self._build_system_prompt()
+
+    # ────────────────────────────────────────── Prompt helpers ────────────
+    def _build_system_prompt(self) -> str:
+        """Create a self‑contained system prompt with predicate and action info."""
+        pred_lines: list[str] = ["=== Predicate Information ==="]
+        for pred in sorted(self._known_predicates, key=lambda p: p.name):
+            pred_lines.append(f"Predicate: {pred.name}")
+            pred_lines.append(f"Types: {[t.name for t in pred.types]}")
+            if hasattr(pred, "pretty_str"):
+                _, desc = pred.pretty_str()
+                pred_lines.append(f"Description: {desc}")
+            pred_lines.append("---")
+
+        action_lines: list[str] = ["=== Action Information ==="]
+        for opt in self._sorted_options:
+            action_lines.append(f"Action: {opt.name}")
+            action_lines.append(f"Types: {[t.name for t in opt.types]}")
+            # Some options have a params_space attr that prints nicely (e.g., Box)
+            if hasattr(opt, "params_space"):
+                action_lines.append(f"Parameters: {opt.params_space}")
+            action_lines.append("---")
+
+        meta = (
+            "You are an expert symbolic‑planner assistant.  "
+            "Based on the *known* predicates and actions above, "
+            "you will infer **effect vectors** (add=1, delete=2, none=0) "
+            "for *new* predicates when asked.  "
+            "Return **only** a Python‑style list of lists, e.g., [[0,1,0],[2,0,0]]."
         )
+        return "\n".join(pred_lines + action_lines + [meta])
 
-    # ------------------------------------------------------------------ prompt
+    # ---------------------------------------------------------------------
     def _create_prompt(
         self,
         pred_name: str,
-        pred_types: List["Type"],
+        pred_types: List[Type],
         pred_description: Union[str, None] = None,
     ) -> str:
+        """User prompt sent to the chat completion."""
         actions_str = "\n".join(
             f"{i+1}. {opt.name} ({[t.name for t in opt.types]})"
             for i, opt in enumerate(self._sorted_options)
         )
 
-        prompt  = (
-            f"Given a predicate '{pred_name}' that operates on types "
-            f"{[t.name for t in pred_types]}"
-        )
+        prompt_parts = [
+            f"Predicate signature ⇒ Types: {[t.name for t in pred_types]}",
+            f"Tentative name: {pred_name}",
+        ]
         if pred_description:
-            prompt += f"\nDescription: {pred_description}"
+            prompt_parts.append(f"Natural‑language hint: {pred_description}")
+        prompt_parts.append("\nAvailable actions (index‑aligned):\n" + actions_str)
+        prompt_parts.append(
+            "For *each* action output 0/1/2 as defined earlier.  "
+            "Return a list‑of‑lists with **two** patterns (diverse guesses) "
+            "if you are uncertain."
+        )
+        return "\n".join(prompt_parts)
 
-        prompt += f"""
-        Available actions:
-        {actions_str}
-
-        For each action, specify if it:
-        1. Adds the predicate (1)
-        2. Deletes the predicate (2)
-        3. Has no effect (0)
-
-        Return the effect vectors in the exact format:
-        [[a11, a12, …, a1N],   # pattern 1
-        [a21, a22, …, a2N]]   # pattern 2
-        where N = number of actions and each aᵢⱼ ∈ {{0,1,2}}.
-        """
-        return prompt.strip()
-
-    # ----------------------------------------------------------- parse results
-    def _parse_llm_response(self, response_text: str) -> List[torch.Tensor]:
-        """Extract [[...]] list from the LLM reply and convert to tensors."""
+    # ---------------------------------------------------------------------
+    def _parse_llm_response(self, response_text: str) -> List[torch.Tensor]:  # noqa: C901
+        """Extract vector list [[...]] and convert to torch tensors."""
         try:
-            vector_pattern = r"\[\[.*?\]\]"
-            match = re.search(vector_pattern, response_text, re.S)
-            if not match:
-                raise ValueError("vector block ([[...]]]) not found")
+            vector_block = re.search(r"\[\[.*?\]\]", response_text, re.S)
+            if not vector_block:
+                raise ValueError("no [[...]] block found")
 
-            raw_vectors = eval(match.group(0))  # noqa: S307 (controlled input)
-
+            raw_vectors: list[list[int]] = eval(vector_block.group(0))  # nosec B307
             tensors: list[torch.Tensor] = []
             for vec in raw_vectors:
                 if len(vec) != len(self._sorted_options):
-                    logging.warning(
-                        "Vector length mismatch (%d ≠ %d); skipping",
-                        len(vec), len(self._sorted_options),
-                    )
+                    logging.warning("Effect vector length %d ≠ #actions %d – skipped", len(vec), len(self._sorted_options))
                     continue
                 t = torch.tensor(vec, dtype=torch.long)
-                # Optional two-channel expansion
                 if os.getenv("NEUPI_AE_MATRIX_CHANNEL", "1") == "2":
                     t = one2two(t, 2)
                 tensors.append(t)
-
             return tensors
-
-        except Exception as err:  # pragma: no cover
-            logging.error("Failed to parse LLM response: %s", err)
+        except Exception as exc:  # pragma: no cover
+            logging.error("LLM parse failure: %s", exc)
             return []
 
-    # --------------------------------------------------------- public helpers
+    # ───────────────────────────── Public API: by *name* query ────────────
     def get_effect_vectors(
         self,
+        *,
         pred_name: str,
-        pred_types: List["Type"],
+        pred_types: List[Type],
         pred_description: Union[str, None] = None,
     ) -> List[torch.Tensor]:
-        """Query the LLM and return candidate effect vectors (torch tensors)."""
+        """Query the chat model and return candidate vectors."""
         prompt = self._create_prompt(pred_name, pred_types, pred_description)
+        logging.info(f"\n{'='*50}")
+        logging.info(f"Getting effect vectors for predicate: {pred_name}")
+        logging.info(f"Types: {[t.name for t in pred_types]}")
+        if pred_description:
+            logging.info(f"Description: {pred_description}")
+        logging.info(f"{'='*50}")
 
         for attempt in range(1, self.config["retry_attempts"] + 1):
             try:
@@ -156,31 +173,54 @@ class LLMEffectVectorGenerator:
                     temperature = self.config["temperature"],
                     max_tokens  = self.config["max_tokens"],
                     messages=[
-                        {"role": "system", "content": self.config["system_prompt"]},
+                        {"role": "system", "content": self.system_prompt},
                         {"role": "user",   "content": prompt},
                     ],
                 )
                 answer = chat.choices[0].message.content
                 vectors = self._parse_llm_response(answer)
                 if vectors:
+                    logging.info(f"\nGenerated {len(vectors)} effect vectors:")
+                    for i, vec in enumerate(vectors):
+                        logging.info(f"\nVector {i+1}:")
+                        if vec.ndim == 2:  # Two-channel format
+                            logging.info("Add effects (1):")
+                            for j, val in enumerate(vec[:, 0]):
+                                logging.info(f"  {self._sorted_options[j].name}: {val.item()}")
+                            logging.info("Delete effects (2):")
+                            for j, val in enumerate(vec[:, 1]):
+                                logging.info(f"  {self._sorted_options[j].name}: {val.item()}")
+                        else:  # Single-channel format
+                            logging.info("Effects (0=none, 1=add, 2=delete):")
+                            for j, val in enumerate(vec):
+                                logging.info(f"  {self._sorted_options[j].name}: {val.item()}")
                     return vectors
-                raise ValueError("Parsed zero valid vectors")
-
+                raise ValueError("no valid vectors parsed")
             except Exception as err:
-                logging.error("Attempt %d/%d failed: %s",
-                              attempt, self.config["retry_attempts"], err)
+                logging.error("Attempt %d/%d failed: %s", attempt, self.config["retry_attempts"], err)
                 if attempt == self.config["retry_attempts"]:
                     raise
-        return []  # shouldn't reach here
+        return []  # pragma: no cover
 
-    # --------------------------------------------------------- vector checks
+    # ───────────────────────────── Public API: by *types* only ────────────
+    def guess_by_types(
+        self,
+        pred_types: List[Type],
+        *,
+        hint: Union[str, None] = None,
+        dummy_name: str = "UnnamedPredicate",
+    ) -> List[torch.Tensor]:
+        """Same as `get_effect_vectors` but you only know the argument types."""
+        return self.get_effect_vectors(pred_name=dummy_name, pred_types=pred_types, pred_description=hint)
+
+    # ───────────────────────────── Optional validation helper ─────────────
     def validate_effect_vectors(
         self,
         vectors: List[torch.Tensor],
         constraints: List[Tuple],
     ) -> List[torch.Tensor]:
-        """Filter vectors that violate any given (simple) constraints."""
-        valid = []
+        """Filter the vectors according to simple position‑based constraints."""
+        valid: list[torch.Tensor] = []
         for vec in vectors:
             if all(self._check_constraint(vec, c) for c in constraints):
                 valid.append(vec)
@@ -188,149 +228,68 @@ class LLMEffectVectorGenerator:
 
     @staticmethod
     def _check_constraint(vec: torch.Tensor, constraint: Tuple) -> bool:
-        """Only understands ('position', row, col_or_chan, chan_or_val, val)."""
+        """Constraint format: ('position', index, value). Supports 1‑ or 2‑channel."""
         if constraint[0] != "position":
             return True
-        _, row, col, channel, value = constraint
+        _, idx, val = constraint
         try:
-            return vec[row, channel] == value
-        except Exception:   # out-of-range, shape mismatch, ...
+            if vec.ndim == 1:
+                return int(vec[idx]) == val
+            return int(vec[idx, 0]) == val or int(vec[idx, 1]) == val  # coarse check
+        except IndexError:
             return False
 
 
 
 
+# ╔════════════════════════════════════════════════════════════════════════╗
+# ║                               Demo main()                             ║
+# ╚════════════════════════════════════════════════════════════════════════╝
 
+def main() -> None:
+    """Minimal manual test for the generator (uses dummy structs)."""
 
-def test_llm_effect_vector_generator():
-    """Test function for LLMEffectVectorGenerator."""
-    from predicators.structs import Type, ParameterizedOption, Box, Action
-    import numpy as np
-    from dotenv import load_dotenv
-    import os
-    
-    # Load environment variables from .env file
-    load_dotenv('.env.local')
+    # --- Dummy stand‑ins if predicators structs are heavy to import ----------
+    class DummyType:
+        def __init__(self, name: str) -> None:
+            self.name = name
 
-    # Create dummy types with feature names
-    types = {
-        Type("robot", feature_names=["x", "y", "z"]),
-        Type("object", feature_names=["x", "y", "z"]),
-        Type("target", feature_names=["x", "y", "z"])
-    }
-    
-    # Create dummy options
+    class DummyOption:
+        def __init__(self, name: str, types: List[DummyType]):
+            self.name = name
+            self.types = types
+            self.params_space = None
+
+    class DummyPredicate:
+        def __init__(self, name: str, types: List[DummyType]):
+            self.name = name
+            self.types = types
+        def pretty_str(self):
+            return self.name, f"dummy description for {self.name}"
+
+    obj = DummyType("object")
+
     options = [
-        ParameterizedOption(
-            name="pick",
-            types=[Type("robot", feature_names=["x", "y", "z"]), 
-                  Type("object", feature_names=["x", "y", "z"])],
-            params_space=Box(low=np.array([0.0]), high=np.array([1.0])),
-            policy=lambda s, o, p: Action(np.array([0.0])),
-            initiable=lambda s, o, p: True,
-            terminal=lambda s, o, p: True
-        ),
-        ParameterizedOption(
-            name="place",
-            types=[Type("robot", feature_names=["x", "y", "z"]), 
-                  Type("object", feature_names=["x", "y", "z"]),
-                  Type("target", feature_names=["x", "y", "z"])],
-            params_space=Box(low=np.array([0.0]), high=np.array([1.0])),
-            policy=lambda s, o, p: Action(np.array([0.0])),
-            initiable=lambda s, o, p: True,
-            terminal=lambda s, o, p: True
-        ),
-        ParameterizedOption(
-            name="move",
-            types=[Type("robot", feature_names=["x", "y", "z"]), 
-                  Type("target", feature_names=["x", "y", "z"])],
-            params_space=Box(low=np.array([0.0]), high=np.array([1.0])),
-            policy=lambda s, o, p: Action(np.array([0.0])),
-            initiable=lambda s, o, p: True,
-            terminal=lambda s, o, p: True
-        )
+        DummyOption("Pick", [obj, obj]),
+        DummyOption("Place", [obj, obj]),
+        DummyOption("Move", [obj, obj]),
     ]
 
-    # Initialize the generator
-    generator = LLMEffectVectorGenerator(
+    predicates = {
+        DummyPredicate("Holding", [obj]),
+        DummyPredicate("OnTable", [obj]),
+    }
+
+    gen = LLMEffectVectorGenerator(
         sorted_options=options,
-        types=types,
-        config={
-            'model': 'gpt-4o-mini',
-            'temperature': 0.7,
-            'max_tokens': 1000,
-            'system_prompt': "You are a helpful assistant that generates action effect vectors for predicates.",
-            'retry_attempts': 3
-        }
+        known_predicates=predicates,
     )
 
-    # Test cases
-    test_cases = [
-        {
-            "predicate": "holding",
-            "types": [Type("robot", feature_names=["x", "y", "z"]), 
-                     Type("object", feature_names=["x", "y", "z"])],
-            "description": "Robot is holding an object"
-        },
-        {
-            "predicate": "on",
-            "types": [Type("object", feature_names=["x", "y", "z"]), 
-                     Type("target", feature_names=["x", "y", "z"])],
-            "description": "Object is on top of target"
-        },
-        {
-            "predicate": "clear",
-            "types": [Type("object", feature_names=["x", "y", "z"])],
-            "description": "Object has nothing on top of it"
-        }
-    ]
-
-    # Run tests for each case
-    for case in test_cases:
-        print(f"\n{'='*50}")
-        print(f"Testing predicate: {case['predicate']}")
-        print(f"Types: {[t.name for t in case['types']]}")
-        print(f"Description: {case['description']}")
-        print(f"{'='*50}")
-
-        try:
-            # Get effect vectors
-            vectors = generator.get_effect_vectors(
-                pred_name=case['predicate'],
-                pred_types=case['types'],
-                pred_description=case['description']
-            )
-
-            # Print generated vectors
-            print("\nGenerated effect vectors:")
-            for i, vec in enumerate(vectors):
-                print(f"\nVector {i+1}:")
-                if vec.shape[-1] == 2:  # Two-channel format
-                    print("Add effects:", vec[:, 0].tolist())
-                    print("Delete effects:", vec[:, 1].tolist())
-                else:  # Single-channel format
-                    print("Effects:", vec.tolist())
-
-            # Test validation
-            print("\nTesting vector validation...")
-            constraints = [
-                ('position', 0, 0, 0, 1),  # First action must add the predicate
-                ('position', 1, 0, 1, 0)   # Second action must not delete the predicate
-            ]
-            
-            valid_vectors = generator.validate_effect_vectors(vectors, constraints)
-            print(f"\nValid vectors after constraint checking: {len(valid_vectors)}")
-            for i, vec in enumerate(valid_vectors):
-                print(f"\nValid Vector {i+1}:")
-                if vec.shape[-1] == 2:
-                    print("Add effects:", vec[:, 0].tolist())
-                    print("Delete effects:", vec[:, 1].tolist())
-                else:
-                    print("Effects:", vec.tolist())
-
-        except Exception as e:
-            print(f"\nError during testing: {e}")
-            continue
+    vectors = gen.get_effect_vectors(
+        pred_name="Holding",
+        pred_types=[obj],
+    )
+    print(vectors)
 
 if __name__ == "__main__":
-    test_llm_effect_vector_generator()
+    main()

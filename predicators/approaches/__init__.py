@@ -40,7 +40,6 @@ def create_approach(name: str, initial_predicates: Set[Predicate],
                     train_tasks: List[Task]) -> BaseApproach:
     """Create an approach given its name."""
     # Handle approach wrappers.
-    print(f"Creating approach: {name}")
     if "[" in name:
         idx = name.index("[")
         wrapper_name = name[:idx]
