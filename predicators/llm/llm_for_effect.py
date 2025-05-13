@@ -73,7 +73,8 @@ class LLMEffectVectorGenerator:
             "You are an expert symbolic‑planner assistant. "
             "Output **one** best‑guess effect vector (0 none, 1 add, 2 delete) for the <TARGET> predicate.The name of the <TARGET> predicate maybe unknown,just ignore its name.you need to infer it will be add or delete or no impact for those actions."
             "Return it **only** as a Python list of ints, e.g. [0,1,0,2] mean the first option is none, the second option is add, the third option is none, the fourth option is delete, and the length of the list should be the same as the number of actions."
-            "And there is a sparse effect that the many actions have no effect on the <TARGET> predicate, so you need to ignore those actions and only consider the ones that have an effect on the <TARGET> predicate."
+            "The predicate is an abstract concept to describe the state of the world, for example, the predicate 'OnTable(block)' means the block is on the table.And if the action is 'Pick(block)', the effect on the predicate 'OnTable(block)' is very likely to be 'delete'."
+            "Since you do not know the name of the <TARGET> predicate, you need to infer it by their types,maybe you can guess what the predicate  will exist in this domain."
         )
         if self._domain_desc:
             lines.append("=== Domain Description ===")
