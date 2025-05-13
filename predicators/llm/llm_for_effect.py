@@ -52,9 +52,9 @@ class LLMEffectVectorGenerator:
         load_dotenv(".env.local")
         self.cfg = {
             "model": "gpt-4o",
-            "temperature": 0.5,      # deterministic, pick highest‑prob vector
-            "max_tokens":1000,
-            "retry_attempts": 10,
+            "temperature": 0.9,      # deterministic, pick highest‑prob vector
+            "max_tokens":10000,
+            "retry_attempts": 20,
             "timeout": 30.0,
             **(llm_cfg or {}),
         }
@@ -73,6 +73,7 @@ class LLMEffectVectorGenerator:
             "You are an expert symbolic‑planner assistant. "
             "Output **one** best‑guess effect vector (0 none, 1 add, 2 delete) for the <TARGET> predicate.The name of the <TARGET> predicate maybe unknown,just ignore its name.you need to infer it will be add or delete or no impact for those actions."
             "Return it **only** as a Python list of ints, e.g. [0,1,0,2] mean the first option is none, the second option is add, the third option is none, the fourth option is delete, and the length of the list should be the same as the number of actions."
+            "And there is a sparse effect that the many actions have no effect on the <TARGET> predicate, so you need to ignore those actions and only consider the ones that have an effect on the <TARGET> predicate."
         )
         if self._domain_desc:
             lines.append("=== Domain Description ===")
@@ -81,10 +82,23 @@ class LLMEffectVectorGenerator:
         lines.append("=== Predicates ===")
         for p in sorted({self.target_pred} | self._other_preds, key=lambda x: x.name):
             prefix = "<TARGET> " if p == self.target_pred else ""
-            lines.append(f"{prefix}Predicate: {p.name} | Types: {[t.name for t in p.types]}")
+            lines.append(f"{prefix}Predicate: Unknown | Types: {[t.name for t in p.types]}")
         lines.append("=== Actions ===")
         for opt in self._options:
             lines.append(f"{opt.name}({[t.name for t in opt.types]})")
+        lines.append(
+            "\n=== Constraint Matrix Format ===\n"
+            "You may receive a line of the form\n"
+            "    CONSTRAINT_MATRIX = [[[…], […], …]\n"
+            "It is a list whose length equals the number of actions.\n"
+            "For each action i:\n"
+            "  • entry[i] lists *allowed* values for this action\n"
+            "If a list has one element, that value is mandatory; if it has\n"
+            "three elements [0,1,2], there is no restriction.\n"
+            "When you output the final effect vector, **every element must\n"
+            "respect these allowed sets**."
+        )
+
        
         return "\n".join(lines)
 
@@ -142,6 +156,7 @@ class LLMEffectVectorGenerator:
                     return vec
             except Exception as err:
                 print(err)
+                time.sleep(1)
                 if attempt == self.cfg["retry_attempts"]:
                     raise
         return None

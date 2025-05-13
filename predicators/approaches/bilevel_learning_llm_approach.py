@@ -703,7 +703,7 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
             sat_vectors = self.gen_sat_vec(curr_pred, pred_config["batch_vect_num"], \
                             pred_config["matrix_vec_try"], symbolic_model,llm_generator)
             
-        if not len(sat_vec tors):
+        if not len(sat_vectors):
             logging.info("No more sat matrixes can be generated at iteration {}!".format(iteration))
             return torch.tensor([]), torch.tensor([]), [], []
         curr_ae_vectors = sat_vectors
@@ -778,7 +778,7 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                     ae_vec = torch.load(model_paths_loss[i][0].replace("model", "ae_vector"))
                     ae_vecs.append(ae_vec)
         return ae_vecs, scores, val_losses, model_weight_paths
-
+   
     def gen_sat_vec(self, pred: DummyPredicate, \
                     max_num: int, \
                     max_samples: int, \
@@ -817,11 +817,48 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                     raise ValueError('Unknown constraint type')
             
             if llm_generator is not None:
+                def constraints_to_vector(row_names: List[ParameterizedOption],
+                                        constraints: List[Tuple]) -> list[list[int]]:
+                    """
+                    Return allowed_codes[action_index] → list of permissible integers {0,1,2}.
+
+                    Mapping from the original two-channel rules
+                        • channel==0, value==1  → only code 1   (add effect required)
+                        • channel==0, value==0  → code 1 forbidden
+                        • channel==1, value==1  → only code 2   (delete effect required)
+                        • channel==1, value==0  → code 2 forbidden
+                    The intersection of all rules for the same action is kept.
+                    """
+                    n_actions = len(row_names)
+                    allowed = [set([0, 1, 2]) for _ in range(n_actions)]
+
+                    for rule in constraints:
+                        if rule[0] != "position":
+                            continue
+                        row, _, channel, value = rule[1:]
+
+                        if channel == 0:            # ADD channel
+                            if value == 1:
+                                allowed[row] = {1}
+                            else:                   # value == 0
+                                allowed[row].discard(1)
+
+                        elif channel == 1:          # DELETE channel
+                            if value == 1:
+                                allowed[row] = {2}
+                            else:                   # value == 0
+                                allowed[row].discard(2)
+
+                    # convert sets → sorted lists for JSON friendliness
+                    return [sorted(list(codes)) for codes in allowed]
+
+                def constraints_to_hint(*, row_names, constraints):
+                    """Return one-liner JSON-ish string for the LLM prompt."""
+                    vec = constraints_to_vector(row_names, constraints)
+                    return "CONSTRAINT_MATRIX = " + str(vec)
                 hint_txt = constraints_to_hint(
-                    pred_name = pred.name,
                     row_names = self.ae_row_names,
-                    constraints = constraints,
-                    channels = channels,
+                    constraints = constraints
                 )
 
                 symbolic_proposal = llm_generator.generate(hint=hint_txt)
@@ -1467,7 +1504,7 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
         """Learn the Neural predicates by Action Effect Martix Identification."""
         logging.info("Constructing NeuPi Data...")
         total_mcts_iterations = 0
-       
+        num_vectors_to_generate_list = [2,2,1,2]
         # 1. Generate data from the dataset. This is general
         data, trajectories, init_atom_traj = self._generate_data_from_dataset(dataset)
         # 2. Setup the input fields for the neural predicate, this is general
@@ -1568,9 +1605,10 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
             llm_generator = LLMEffectVectorGenerator(
                 target_pred=curr_pred,
                 sorted_options=list(self._initial_options),
-                other_predicates=self._initial_predicates,
-                domain_desc=""
+                domain_desc="There are some number of satellites,each carrying an instrument.The possible instruments are: (1) a camera, (2) an infrared sensor, (3) a Geiger counter.Additionally, each satellite may be able to shoot Chemical X and/or Chemical Y.The satellites have a viewing cone within which they can see everything that is not occluded.The goal is for specific satellites to take readings of specific objects with calibrated instruments."
             )
+            num_vectors_to_generate = num_vectors_to_generate_list[curr_pred.arity-1]
+            logging.info(f"Number of vectors to generate for {curr_pred.name}: {num_vectors_to_generate}")
             symbolic_search_model = HierachicalMCTSearcher(
                                             len(self.ae_row_names),
                                             pred_config['search_tree_max_level'], \
@@ -1690,6 +1728,7 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                                 self.learned_ae_pred_info[curr_pred]['ae_vecs'].append(ae_vector.clone())
                                 self.learned_ae_pred_info[curr_pred]['scores'].append(iter_guidance_vecs[min_idx].clone())
                                 self.learned_ae_pred_info[curr_pred]['model_weights'].append(model_weight_paths[min_idx])
+                                
                     else:
                         logging.info(f"No low-objective ae vectors found for this iteration..")
                     # save the neural feedback for symbolic training
@@ -1700,6 +1739,9 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                         value = learned_guidance.numpy()
                         symbolic_search_model.update_value(state, value)
                     logging.info(f"Till this iteration, MCTS iterations: {symbolic_search_model.get_iteration_count()}")
+                    if(len(self.learned_ae_pred_info[curr_pred]['ae_vecs']) >= num_vectors_to_generate):
+                        logging.info(f"Got enough vectors for {curr_pred.name}, stopping...")
+                        break
                 
             total_mcts_iterations += symbolic_search_model.get_iteration_count()
             logging.info(f"******************Bi-level Optimization Done for {curr_pred.name}! Summary:******************")
