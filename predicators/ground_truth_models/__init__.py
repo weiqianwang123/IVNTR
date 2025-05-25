@@ -167,6 +167,13 @@ def get_gt_options(env_name: str) -> Set[ParameterizedOption]:
         predicates = {p.name: p for p in env.predicates}
         options = BlocksOnClearGroundTruthOptionFactory().get_options(
             env_name, types, predicates, env.action_space)
+    elif env_name == "tools":
+        from predicators.ground_truth_models.tools.options import \
+            ToolsGroundTruthOptionFactory
+        types = {t.name: t for t in env.types}
+        predicates = {p.name: p for p in env.predicates}
+        options = ToolsGroundTruthOptionFactory().get_options(
+            env_name, types, predicates, env.action_space)
     else:
         raise NotImplementedError("Ground-truth options not implemented for "
                                   f"env: {env_name}")

@@ -1605,7 +1605,7 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
             llm_generator = LLMEffectVectorGenerator(
                 target_pred=curr_pred,
                 sorted_options=list(self._initial_options),
-                domain_desc="There are some number of satellites,each carrying an instrument.The possible instruments are: (1) a camera, (2) an infrared sensor, (3) a Geiger counter.Additionally, each satellite may be able to shoot Chemical X and/or Chemical Y.The satellites have a viewing cone within which they can see everything that is not occluded.The goal is for specific satellites to take readings of specific objects with calibrated instruments."
+                domain_desc=pred_config['domain_desc']
             )
             num_vectors_to_generate = num_vectors_to_generate_list[curr_pred.arity-1]
             logging.info(f"Number of vectors to generate for {curr_pred.name}: {num_vectors_to_generate}")

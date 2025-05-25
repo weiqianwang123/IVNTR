@@ -1,6 +1,10 @@
 final_op: [0, 0, 0, 0, 0, 1, 1, 1]
 neupi_non_effect_predicates: ['CalibrationTarget', 'HasCamera', 'HasInfrared', 'HasGeiger', 'ShootsChemX', 'ShootsChemY']
+
 config:
+  - name: "other"
+    num_vectors_to_generate_list: [2, 2, 1, 2]
+    domain_desc: "There are some number of satellites,each carrying an instrument.The possible instruments are: (1) a camera, (2) an infrared sensor, (3) a Geiger counter.Additionally, each satellite may be able to shoot Chemical X and/or Chemical Y.The satellites have a viewing cone within which they can see everything that is not occluded.The goal is for specific satellites to take readings of specific objects with calibrated instruments."
   - name: "neural_u_p1"
     types: ["satellite"]
     ent_idx: [0]
