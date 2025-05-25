@@ -55,7 +55,7 @@ from predicators.structs import Dataset, GroundAtom, GroundAtomTrajectory, LowLe
     Action
 from predicators.structs import NSRT, PNAD, GroundAtomTrajectory, \
     LowLevelTrajectory, ParameterizedOption, Predicate, Segment, Task
-from predicators.llm.llm_for_effect import LLMEffectVectorGenerator
+from predicators.llm.llm_for_effect import LLMEffectVectorGenerator,LLMEffectVectorGeneratorV2,two2one
 
 
 _Output = TypeVar("_Output")  # a generic type for the output of this GNN
@@ -279,6 +279,8 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
             assert len(self.final_op) == len(self._sorted_options), "Final Op Not Match"
 
         for pred_info in self.pred_config:
+            if pred_info['name'] == "other":
+                continue
             pred_name = pred_info['name']
             types_str = pred_info['types']
             types = [self._obj_types[t] for t in types_str]
@@ -894,8 +896,8 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                 # state = symbolic_proposal.copy()
                 # guidance = np.array([np.inf for _ in range(len(self.ae_row_names))])
                 # # unsatisfiable node, update searcher
-                # llm_generator.update_value(state, guidance)
                 logging.info(f"Vector not satisfiable.")
+                llm_generator.update_loss(symbolic_proposal, float("inf"))
         return sat_vectors
             
     def _setup_input_fields(
@@ -1504,7 +1506,7 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
         """Learn the Neural predicates by Action Effect Martix Identification."""
         logging.info("Constructing NeuPi Data...")
         total_mcts_iterations = 0
-        num_vectors_to_generate_list = [2,2,1,2]
+        num_vectors_to_generate_list = self.pred_config[0]['num_vectors_to_generate_list']
         # 1. Generate data from the dataset. This is general
         data, trajectories, init_atom_traj = self._generate_data_from_dataset(dataset)
         # 2. Setup the input fields for the neural predicate, this is general
@@ -1602,10 +1604,10 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                                         pred_config['architecture'],
                                         self._node_feature_to_index,
                                         self._edge_feature_to_index)
-            llm_generator = LLMEffectVectorGenerator(
+            llm_generator = LLMEffectVectorGeneratorV2(
                 target_pred=curr_pred,
                 sorted_options=list(self._initial_options),
-                domain_desc=pred_config['domain_desc']
+                domain_desc=self.pred_config[0]['domain_desc']
             )
             num_vectors_to_generate = num_vectors_to_generate_list[curr_pred.arity-1]
             logging.info(f"Number of vectors to generate for {curr_pred.name}: {num_vectors_to_generate}")
@@ -1687,6 +1689,10 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                     if len(model_weight_paths) == 0:
                         logging.info(f"Early Stopping at Iteration {iteration}!")
                         break
+                    if llm_generator is not None:
+                        for vec, vloss in zip(iter_ae_vectors, iter_val_loss):
+                            llm_generator.update_loss(two2one(vec), float(vloss))
+
                     # Do we have a low-objective ae vector?
                     logging.info(f"Learning Done in {time.time()-s_time} sec, Checking if exists low-objective ae vector...")
                     all_iter_objective = torch.stack(iter_guidance_vecs, dim=0)
