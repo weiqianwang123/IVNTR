@@ -1,6 +1,9 @@
 final_op: [1, 0, 0, 0, 0]
 neupi_non_effect_predicates: []
 config:
+  - name: "other"
+    num_vectors_to_generate_list: [2, 2, 5, 0, 2, 5, 0]
+    domain_desc: "The robot needs to manipulate a set of blocks (which were initialized as random towers) and pack them into required pairs. In order to pack two blocks, oneblock needs to be on the top of another with the bottom block on the table and the top block clear."
   - name: "neural_u_p1"
     types: ["robot"]
     ent_idx: [0]

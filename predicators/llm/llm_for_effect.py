@@ -58,9 +58,9 @@ class LLMEffectVectorGenerator:
         load_dotenv(".env.local")
         self.cfg = {
             "model": "gpt-4o",
-            "temperature": 0.2,
+            "temperature": 0.9,
             "max_tokens": 10_000,
-            "retry_attempts": 20,
+            "retry_attempts": 1000,  # retry until success
             "timeout": 30.0,
             **(llm_cfg or {}),
         }
@@ -81,6 +81,7 @@ class LLMEffectVectorGenerator:
             "The name of the <TARGET> predicate may be unknown—just ignore its name. "
             "You need to infer whether each action adds, deletes, or has no impact on that predicate. "
             "Return it **only** as a Python list of ints, e.g. `[0,1,0,2]`, whose length equals the number of actions."
+            "Remember the effect is always sparse,which means only few actions will be involved in each predicate.So tries to explore those with fewer non-zero entries first,but do not repeat previous vectors or vectors not respecting the constraints."
         )
         lines.append(
             "A predicate is an abstract statement about the world. For instance, in Blocks‑World, `OnTable(block)` becomes false after `Pick(block)`."
@@ -193,6 +194,122 @@ class LLMEffectVectorGeneratorV2(LLMEffectVectorGenerator):
             parts.append("Vectors already used (avoid repeating!!!!!): " + str(list(self._seen)))
         return "\n".join(parts)
 
+# ────────  v3-neighbour-search  ────────
+import random, math, numpy as np
+
+class LLMEffectVectorGeneratorV3(LLMEffectVectorGeneratorV2):
+    """
+    After `k` seen vectors, switch to neighbour sampling guided by low loss
+    and a one-shot LLM choice among at most `n_candidates` options.
+    """
+
+    def __init__(self, *, k: int = 25 , n_candidates: int = 10,beta: float = 15.0,
+                 llm_pick_temperature: float = 0.3, **kwargs):
+        super().__init__(**kwargs)
+        self.k = k
+        self.n_candidates = n_candidates
+        self._mode = "llm"        # "llm"  → classic;  "nbh" → neighbour mode
+        self._llm_pick_temp = llm_pick_temperature
+        self.beta = beta          # softmax temperature for loss weighting
+
+    # --------------- helpers ----------------
+    def _softmax_choice(self) -> Optional[List[int]]:
+        if not self._losses:
+            return None
+        losses = np.array(list(self._losses.values()), dtype=float)
+        weights = np.exp(-self.beta * losses)
+        probs = weights / weights.sum()
+        keys = list(self._losses.keys())
+        idx = np.random.choice(len(keys), p=probs)
+        return eval(keys[idx])  # nosec – we created these strings
+
+    @staticmethod
+    def _neighbours(vec: List[int]) -> List[List[int]]:
+        """Return all valid 1-edit neighbours.
+
+        • If a cell is non-zero:
+            – set it to 0  (delete)
+            – flip 1 ↔ 2   (add↔del toggle)
+        • If the vector currently has *exactly one* non-zero entry:
+            – pick every zero cell once and set it to 1 or 2  (new add/del)
+        """
+        nbhs: List[List[int]] = []
+        non_zero_idx = [i for i, v in enumerate(vec) if v != 0]
+        zero_idx     = [i for i, v in enumerate(vec) if v == 0]
+
+        # Existing rules: operate on each non-zero entry
+        for i in non_zero_idx:
+            # → 0
+            n = vec.copy(); n[i] = 0; nbhs.append(n)
+            # 1 ↔ 2 toggle
+            if vec[i] == 1:
+                n2 = vec.copy(); n2[i] = 2; nbhs.append(n2)
+            elif vec[i] == 2:
+                n2 = vec.copy(); n2[i] = 1; nbhs.append(n2)
+
+        # NEW rule: exactly one non-zero → grow the vector by 1
+        if len(non_zero_idx) == 1:
+            for j in zero_idx:
+                for val in (1, 2):
+                    n = vec.copy()
+                    n[j] = val
+                    nbhs.append(n)
+
+        return nbhs
+
+
+    def _llm_pick(self, cands: List[List[int]]) -> Optional[List[int]]:
+        """Ask LLM ‘which candidate is best’ – returns the vector it echoes."""
+        prompt = (
+            "Here are several *cand* vectors. Output **one** of them EXACTLY "
+            "that you believe will minimise loss relative to previous ones.\n\n"
+            + "\n".join(f"{i}: {c}" for i, c in enumerate(cands))
+        )
+        txt = self._call_llm(prompt)
+        m = re.search(r"\[(?:\s*-?\d+\s*,?)+\]", txt)
+        if m:
+            vec = eval(m.group(0))   # nosec B307
+            if vec in cands:
+                return vec
+        # fallback: first candidate
+        return cands[0] if cands else None
+
+    # --------------- generate ----------------
+    def generate(self, *, hint: Optional[str] = None) -> Optional[torch.Tensor]:
+        # ── phase switch ──
+        if self._mode == "llm" and len(self._seen) >= self.k:
+            self._mode = "nbh"
+            logging.info(f"🔁 switched to neighbour-sampling mode (k={self.k})")
+
+        # ── classic mode ──
+        if self._mode == "llm":
+            return super().generate(hint=hint)
+
+        # ── neighbour mode ──
+        tried_base = set()
+        while len(tried_base) < len(self._losses):
+            base = self._softmax_choice()
+            if base is None or tuple(base) in tried_base:
+                break
+            tried_base.add(tuple(base))
+
+            nbrs = [n for n in self._neighbours(base) if str(n) not in self._seen]
+            if not nbrs:
+                continue     # nothing new around this base → try another
+
+            random.shuffle(nbrs)
+            cand_subset = nbrs[: self.n_candidates]
+            chosen = self._llm_pick(cand_subset)
+            if chosen is None:
+                continue
+
+            # register & hand back
+            self._seen.add(str(chosen))
+            return torch.tensor(chosen, dtype=torch.long)
+
+        # fallback: give the v2 behaviour
+        logging.info("Neighbour mode exhausted")
+        return  None
 
 
 # ───────────────────────────────────── demo ──────────────────────────────────
@@ -219,10 +336,11 @@ if __name__ == "__main__":
 
     holding = P("unknown")
 
-    gen = LLMEffectVectorGeneratorV2(
+    gen = LLMEffectVectorGeneratorV3(
         target_pred=holding,
         sorted_options=actions,
         domain_desc="Blocks‑world domain with one gripper (demo)",
+        k=1,
     )
 
     # First vector (no loss yet).
@@ -236,3 +354,4 @@ if __name__ == "__main__":
     # Second vector (LLM now sees the (vector,loss) table).
     v2 = gen.generate()
     print("v2 =", v2)
+

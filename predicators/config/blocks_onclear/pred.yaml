@@ -1,5 +1,4 @@
 final_op: [1, 0, 0, 0, 0]
-
 neupi_non_effect_predicates: []
 config:
   - name: "other"
@@ -121,6 +120,7 @@ config:
     skip_train: False
 
   - name: "neural_b_p5"
+    types: ["block", "block"]
     ent_idx: [1, 0]
     architecture:
       type: "MLP"
