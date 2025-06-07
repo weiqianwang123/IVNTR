@@ -56,7 +56,7 @@ from predicators.structs import Dataset, GroundAtom, GroundAtomTrajectory, LowLe
 from predicators.structs import NSRT, PNAD, GroundAtomTrajectory, \
     LowLevelTrajectory, ParameterizedOption, Predicate, Segment, Task
 from predicators.llm.llm_for_effect import LLMEffectVectorGenerator,LLMEffectVectorGeneratorV2,LLMEffectVectorGeneratorV3,two2one
-
+from predicators.llm.llm_for_pddl import PDDLEffectVectorGenerator
 
 _Output = TypeVar("_Output")  # a generic type for the output of this GNN
 
@@ -681,106 +681,134 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                             if rule not in self.learned_ae_pred_info[pred]['constraints']:
                                 self.learned_ae_pred_info[pred]['constraints'].append(rule)
 
-    def gen_ae_vectors4pred(self, iteration: int, curr_pred: DummyPredicate, ent_idx: List[int], pred_save_path: str, \
+    def gen_ae_vectors4pred(self, curr_pred: DummyPredicate, ent_idx: List[int], pred_save_path: str, \
                                     pred_config: Dict, data: List[Tuple[State, Set[GroundAtom], \
-                                    State, Set[GroundAtom], _Option, str]], symbolic_model: HierachicalMCTSearcher,llm_generator: Optional[LLMEffectVectorGenerator]=None) \
+                                    State, Set[GroundAtom], _Option, str]],seed_vec:torch.Tensor) \
         -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Generate a bunch of initial binary action effect vector for the tgt predicate.
         The scores for these initial vectors are also returned.
         """
-        logging.info("Generate {} AE Vectors-Score Pairs for Predicate {}"\
-                     .format(pred_config["batch_vect_num"], curr_pred.name))
 
-        # 1. Use symbolic model to generate AE vectors
-        if self.gt_ae_matrix:
-            if iteration == 0:
-                assert len(self.learned_ae_pred_info[curr_pred]['gt_ae_vecs']), "GT AE Vec Not Provided"
-            else:
-                assert not len(self.learned_ae_pred_info[curr_pred]['gt_ae_vecs']), \
-                    "Iteration > 0, GT AE Vec Should Not Be []"
-            logging.info("GT AE Vec Provided, No Need to Generate AE Vectors.")
-            sat_vectors = copy.deepcopy(self.learned_ae_pred_info[curr_pred]['gt_ae_vecs'])
-            self.learned_ae_pred_info[curr_pred]['gt_ae_vecs'] = []
-        else:
-            sat_vectors = self.gen_sat_vec(curr_pred, pred_config["batch_vect_num"], \
-                            pred_config["matrix_vec_try"], symbolic_model,llm_generator)
+         # 1. Tiny supervised dataset
+        logging.info(f"[{curr_pred.name}] training directly on LLM-seed vector.")
+        train_ds, val_ds = self.gen_graph_data(
+                data, curr_pred, ent_idx, seed_vec)
+
+        # 2. Build & train the neural model once
+        model = setup_neupi_mlp_net(
+                self.learned_ae_pred_info[curr_pred]['example_dataset'],
+                curr_pred.arity,
+                pred_config['architecture'],
+                self._node_feature_to_index,
+                self._edge_feature_to_index)
+
+        model_path, val_loss = train_val_model_single(  # you already have this util
+                curr_pred, ent_idx, pred_save_path,
+                seed_vec, 0, pred_config,
+                self.ae_row_names_dict,
+                self._node_feature_to_index,
+                self._edge_feature_to_index,
+                train_ds, val_ds, 0, CFG.wandb_run_name)
+
+        # 3. Forge a dummy guidance score (all zeros)
+        guidance = torch.zeros(len(self.ae_row_names))
+
+        # 4. Return in the same format as before
+        return [seed_vec], [guidance], [val_loss], [model_path]
+
+        # logging.info("Generate {} AE Vectors-Score Pairs for Predicate {}"\
+        #              .format(pred_config["batch_vect_num"], curr_pred.name))
+
+        # # 1. Use symbolic model to generate AE vectors
+        # if self.gt_ae_matrix:
+        #     if iteration == 0:
+        #         assert len(self.learned_ae_pred_info[curr_pred]['gt_ae_vecs']), "GT AE Vec Not Provided"
+        #     else:
+        #         assert not len(self.learned_ae_pred_info[curr_pred]['gt_ae_vecs']), \
+        #             "Iteration > 0, GT AE Vec Should Not Be []"
+        #     logging.info("GT AE Vec Provided, No Need to Generate AE Vectors.")
+        #     sat_vectors = copy.deepcopy(self.learned_ae_pred_info[curr_pred]['gt_ae_vecs'])
+        #     self.learned_ae_pred_info[curr_pred]['gt_ae_vecs'] = []
+        # else:
+        #     sat_vectors = self.gen_sat_vec(curr_pred, pred_config["batch_vect_num"], \
+        #                     pred_config["matrix_vec_try"], symbolic_model,llm_generator)
             
-        if not len(sat_vectors):
-            logging.info("No more sat matrixes can be generated at iteration {}!".format(iteration))
-            return torch.tensor([]), torch.tensor([]), [], []
-        curr_ae_vectors = sat_vectors
-        # 2. Use neural model to compute the scores for the selected AE vectors
-        logging.info(f"Optimizing {len(curr_ae_vectors)} Neural Models with AE Vector from BO...")
-        ae_vecs = []
-        scores = []
-        val_losses = []
-        model_weight_paths = []
-        train_datasets = []
-        val_datasets = []
+        # if not len(sat_vectors):
+        #     logging.info("No more sat matrixes can be generated at iteration {}!".format(iteration))
+        #     return torch.tensor([]), torch.tensor([]), [], []
+        # curr_ae_vectors = sat_vectors
+        # # 2. Use neural model to compute the scores for the selected AE vectors
+        # logging.info(f"Optimizing {len(curr_ae_vectors)} Neural Models with AE Vector from BO...")
+        # ae_vecs = []
+        # scores = []
+        # val_losses = []
+        # model_weight_paths = []
+        # train_datasets = []
+        # val_datasets = []
 
-        for n, sat_vector in enumerate(curr_ae_vectors):
-            logging.info(f"*******Vec {n} ({curr_pred.name})*******")
-            logging.info("(Add): \n{}".format(sat_vector[:, 0]))
-            if sat_vector.shape[-1] == 2:
-                logging.info("(Del): \n{}".format(sat_vector[:, 1]))
-            # debug
-            # model_weight_paths.append("")
-            # random_score = torch.randn(len(self.ae_row_names)).clamp(0.1, 0.4)
-            # scores.append(random_score)
-            # ae_vecs.append(sat_vector.clone())
-            train_dataset, val_dataset = self.gen_graph_data(data, 
-                                                        curr_pred, 
-                                                        ent_idx,
-                                                        sat_vector)
-            train_datasets.append(train_dataset)
-            val_datasets.append(val_dataset)
-        if len(curr_ae_vectors) == 1 or (not CFG.neupi_parallel_invention):
-            for i in range(len(sat_vectors)):
-                logging.info(f"Training Neural Model {i}...")
-                model_path, val_loss = train_val_model_single(curr_pred, ent_idx, pred_save_path, \
-                                    sat_vectors[i], iteration, pred_config, self.ae_row_names_dict, \
-                                    self._node_feature_to_index, self._edge_feature_to_index, \
-                                    train_datasets[i], val_datasets[i], i, CFG.wandb_run_name)
-                model_weight_paths.append(model_path)
-                val_losses.append(val_loss)
-                ae_vecs.append(sat_vectors[i])
-                score = torch.load(model_weight_paths[i].replace("model", "guidance"))
-                scores.append(score)
-        else:
-            if CFG.neupi_parallel_invention:
-                processes = []
-                queue = Queue()
-                for i in range(len(sat_vectors)):
-                    p = Process(target=train_val_model_in_parallel, args=(
-                        curr_pred,
-                        ent_idx,
-                        pred_save_path,
-                        sat_vectors[i],
-                        iteration,
-                        pred_config,
-                        queue,
-                        self.ae_row_names_dict,
-                        self._node_feature_to_index,
-                        self._edge_feature_to_index,
-                        train_datasets[i],
-                        val_datasets[i],
-                        i,
-                        CFG.wandb_run_name))
-                    p.start()
-                    processes.append(p)
-                for p in processes:
-                    p.join()
-                    logging.info(f"Process {p.pid} finished")
-                model_paths_loss = [queue.get() for _ in range(len(sat_vectors))]
-                for i in range(len(sat_vectors)):
-                    model_weight_paths.append(model_paths_loss[i][0])
-                    val_losses.append(model_paths_loss[i][1])
-                    score = torch.load(model_paths_loss[i][0].replace("model", "guidance"))
-                    scores.append(score)
-                    ae_vec = torch.load(model_paths_loss[i][0].replace("model", "ae_vector"))
-                    ae_vecs.append(ae_vec)
-        return ae_vecs, scores, val_losses, model_weight_paths
+        # for n, sat_vector in enumerate(curr_ae_vectors):
+        #     logging.info(f"*******Vec {n} ({curr_pred.name})*******")
+        #     logging.info("(Add): \n{}".format(sat_vector[:, 0]))
+        #     if sat_vector.shape[-1] == 2:
+        #         logging.info("(Del): \n{}".format(sat_vector[:, 1]))
+        #     # debug
+        #     # model_weight_paths.append("")
+        #     # random_score = torch.randn(len(self.ae_row_names)).clamp(0.1, 0.4)
+        #     # scores.append(random_score)
+        #     # ae_vecs.append(sat_vector.clone())
+        #     train_dataset, val_dataset = self.gen_graph_data(data, 
+        #                                                 curr_pred, 
+        #                                                 ent_idx,
+        #                                                 sat_vector)
+        #     train_datasets.append(train_dataset)
+        #     val_datasets.append(val_dataset)
+        # if len(curr_ae_vectors) == 1 or (not CFG.neupi_parallel_invention):
+        #     for i in range(len(sat_vectors)):
+        #         logging.info(f"Training Neural Model {i}...")
+        #         model_path, val_loss = train_val_model_single(curr_pred, ent_idx, pred_save_path, \
+        #                             sat_vectors[i], iteration, pred_config, self.ae_row_names_dict, \
+        #                             self._node_feature_to_index, self._edge_feature_to_index, \
+        #                             train_datasets[i], val_datasets[i], i, CFG.wandb_run_name)
+        #         model_weight_paths.append(model_path)
+        #         val_losses.append(val_loss)
+        #         ae_vecs.append(sat_vectors[i])
+        #         score = torch.load(model_weight_paths[i].replace("model", "guidance"))
+        #         scores.append(score)
+        # else:
+        #     if CFG.neupi_parallel_invention:
+        #         processes = []
+        #         queue = Queue()
+        #         for i in range(len(sat_vectors)):
+        #             p = Process(target=train_val_model_in_parallel, args=(
+        #                 curr_pred,
+        #                 ent_idx,
+        #                 pred_save_path,
+        #                 sat_vectors[i],
+        #                 iteration,
+        #                 pred_config,
+        #                 queue,
+        #                 self.ae_row_names_dict,
+        #                 self._node_feature_to_index,
+        #                 self._edge_feature_to_index,
+        #                 train_datasets[i],
+        #                 val_datasets[i],
+        #                 i,
+        #                 CFG.wandb_run_name))
+        #             p.start()
+        #             processes.append(p)
+        #         for p in processes:
+        #             p.join()
+        #             logging.info(f"Process {p.pid} finished")
+        #         model_paths_loss = [queue.get() for _ in range(len(sat_vectors))]
+        #         for i in range(len(sat_vectors)):
+        #             model_weight_paths.append(model_paths_loss[i][0])
+        #             val_losses.append(model_paths_loss[i][1])
+        #             score = torch.load(model_paths_loss[i][0].replace("model", "guidance"))
+        #             scores.append(score)
+        #             ae_vec = torch.load(model_paths_loss[i][0].replace("model", "ae_vector"))
+        #             ae_vecs.append(ae_vec)
+        # return ae_vecs, scores, val_losses, model_weight_paths
    
     def gen_sat_vec(self, pred: DummyPredicate, \
                     max_num: int, \
@@ -1535,6 +1563,35 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                 self._input_normalizers = compute_normalizers(graph_inputs, normalize_nodes=self._node_is_rot, \
                                                             normalize_edges=self._edge_is_rot,
                                                             normalize_globals=False)
+        # ----------------------------------------------------------------------
+        all_target_preds: Set[Predicate] = {
+        pred for pred, info in self.learned_ae_pred_info.items()
+        if not info['provided']                   # <- skip the “provided” ones
+        }
+
+        multi_llm = PDDLEffectVectorGenerator(                  # <- NEW
+                target_preds   = all_target_preds,
+                sorted_options = list(self._initial_options),
+                domain_desc    = self.pred_config[0]['domain_desc'],
+                other_predicates = self._initial_predicates)
+
+        # Matrix shape = (|preds| , |actions|).  0=no change, 1=add, 2=del
+        llm_effect_bank: torch.Tensor = multi_llm.generate()    # <- ONE OpenAI call
+
+        # keep a fast lookup: predicate → row-index in the matrix
+        pred_order          = list(all_target_preds)
+        pred2row: dict      = {p: i for i, p in enumerate(pred_order)}
+        # ----------------------------------------------------------------------
+        # helper:  0/1/2   →   (add, del) two-channel tensor
+        # ----------------------------------------------------------------------
+        def _code1_to_mat2(one_d: torch.Tensor) -> torch.Tensor:
+            """[0,1,2] codes → shape=(n_actions,2) add/del matrix."""
+            n = one_d.size(0)
+            mat = torch.zeros((n, 2), dtype=torch.long)
+            mat[:,0] = (one_d == 1).long()   # add
+            mat[:,1] = (one_d == 2).long()   # delete
+            return mat
+
         # 4. Start Learning the typed columns one by one
         for curr_pred in list(sorted(self.learned_ae_pred_info.keys(), key=lambda p: p.arity, reverse=True)):
             if self.learned_ae_pred_info[curr_pred]['provided']:
@@ -1548,6 +1605,8 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                     logging.info(f"AE Vector (Del): {ae_vector[:, 1]}")
                 self.learned_ae_pred_info[curr_pred]['ae_vecs'].append(ae_vector.clone())
                 continue
+
+
             pred_config = {}
             for config in self.pred_config:
                 if config["name"] == curr_pred.name:
@@ -1605,20 +1664,12 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                                         pred_config['architecture'],
                                         self._node_feature_to_index,
                                         self._edge_feature_to_index)
-            llm_generator = LLMEffectVectorGeneratorV3(
-                target_pred=curr_pred,
-                sorted_options=list(self._initial_options),
-                domain_desc=self.pred_config[0]['domain_desc']
-            )
-            num_vectors_to_generate = num_vectors_to_generate_list[curr_pred.arity-1]
-            logging.info(f"Number of vectors to generate for {curr_pred.name}: {num_vectors_to_generate}")
-            symbolic_search_model = HierachicalMCTSearcher(
-                                            len(self.ae_row_names),
-                                            pred_config['search_tree_max_level'], \
-                                            pred_config['guidance_thresh'])
+         
+           
             self.learned_ae_pred_info[curr_pred]['model'] = predicate_neural_model # save the model template
             # The predicate is trained and will be skipped
             # Or, we directly load it
+            iteration = 0
             if os.path.exists(CFG.neupi_load_pretrained) or pred_config["skip_train"]:
                 iteration = -1
                 logging.info(f"Skipping training for {curr_pred}")
@@ -1680,80 +1731,35 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                 if not os.path.exists(pred_save_path):
                     os.makedirs(pred_save_path)
                 # Step1: Get a bunch of initial ae vector - score pairs
-                logging.info(f"***************Bi-level Optimizing ({curr_pred.name})***************")
-                for iteration in range(pred_config['num_iter']):
-                    logging.info(f"-----Iteration: {iteration} ({curr_pred.name})------")
-                    s_time = time.time()
-                    iter_ae_vectors, iter_guidance_vecs, iter_val_loss, model_weight_paths = \
-                        self.gen_ae_vectors4pred(iteration, curr_pred, ent_idx, pred_save_path, \
-                                                pred_config, data, symbolic_search_model,llm_generator)
-                    if len(model_weight_paths) == 0:
-                        logging.info(f"Early Stopping at Iteration {iteration}!")
-                        break
-                    if llm_generator is not None:
-                        for vec, vloss in zip(iter_ae_vectors, iter_val_loss):
-                            llm_generator.update_loss(two2one(vec), float(vloss))
-
-                    # Do we have a low-objective ae vector?
-                    logging.info(f"Learning Done in {time.time()-s_time} sec, Checking if exists low-objective ae vector...")
-                    all_iter_objective = torch.stack(iter_guidance_vecs, dim=0)
-                    all_iter_objective = all_iter_objective.sum(dim=1)
-                    all_iter_losses = torch.tensor(iter_val_loss)
-                    # checking both objective and loss, loss also consideres non-change groundings
-                    all_pass_mask_obj = all_iter_objective < pred_config["guidance_thresh"]
-                    all_pass_mask_loss = all_iter_losses < pred_config["loss_thresh"]
-                    all_pass_mask = all_pass_mask_obj & all_pass_mask_loss
-                    i = 0
-                    if all_pass_mask.any():
-                        # find out their idxes and check if they pass the preconditions
-                        logging.info(f"Found {all_pass_mask.sum()} init low-objective ae vectors!")
-                        min_idxes = torch.where(all_pass_mask)[0]
-                        for min_idx in min_idxes:
-                            logging.info(f"Checking AE Vector {min_idx}...")
-                            predicate_neural_model.load_state_dict(torch.load(model_weight_paths[min_idx]))
-                            ae_vector = iter_ae_vectors[min_idx].clone()
-                            _, val_dataset = self.gen_graph_data(data, 
-                                                                curr_pred, 
-                                                                ent_idx,
-                                                                ae_vector)
-                            val_dataloader = DataLoader(val_dataset,
-                                                        batch_size=pred_config['batch_size'],
-                                                        shuffle=False,
-                                                        num_workers=1,
-                                                        collate_fn=action_graph_batch_collate)
-                            # basic predicate always use 0.5 as threshold
-                            precond_pass = check_learned_ap_vector(val_dataloader, \
-                            pred_config['gumbel_temp'], 0.5, predicate_neural_model, curr_pred, ent_idx, \
-                                self.ae_row_names_dict, ae_vector.clone(), copy.deepcopy(self._node_feature_to_index), CFG.device, \
-                                thresh=CFG.precond_thresh)
-                            if precond_pass:
-                                i += 1
-                                logging.info(f"Precondition Passed for AE Vector {min_idx}! Add to the final list.")
-                                logging.info(f"AE Vector {min_idx} (Add): {ae_vector[:, 0]}")
-                                if ae_vector.shape[1] == 2:
-                                    logging.info(f"AE Vector {min_idx} (Del): {ae_vector[:, 1]}")
-                                self.learned_ae_pred_info[curr_pred]['ae_vecs'].append(ae_vector.clone())
-                                self.learned_ae_pred_info[curr_pred]['scores'].append(iter_guidance_vecs[min_idx].clone())
-                                self.learned_ae_pred_info[curr_pred]['model_weights'].append(model_weight_paths[min_idx])
-                                
-                    else:
-                        logging.info(f"No low-objective ae vectors found for this iteration..")
-                    # save the neural feedback for symbolic training
-                    # convert to categorical
-                    for curr_ae_vector, learned_guidance in zip(iter_ae_vectors, iter_guidance_vecs):
-                        data_x_new = two2one(curr_ae_vector)
-                        state = data_x_new.numpy()
-                        value = learned_guidance.numpy()
-                        symbolic_search_model.update_value(state, value)
-                    logging.info(f"Till this iteration, MCTS iterations: {symbolic_search_model.get_iteration_count()}")
-                    if(len(self.learned_ae_pred_info[curr_pred]['ae_vecs']) >= num_vectors_to_generate):
-                        logging.info(f"Got enough vectors for {curr_pred.name}, stopping...")
-                        break
+                logging.info(f"***************Start neural learning for ({curr_pred.name})***************")
                 
-            total_mcts_iterations += symbolic_search_model.get_iteration_count()
-            logging.info(f"******************Bi-level Optimization Done for {curr_pred.name}! Summary:******************")
-            logging.info(f"Total MCTS iterations: {total_mcts_iterations}")
-            logging.info(f"After {iteration} iterations, we got {len(self.learned_ae_pred_info[curr_pred]['ae_vecs'])} basic vectors:")
+                seed_vec = _code1_to_mat2(llm_effect_bank[pred2row[curr_pred]].clone())
+                logging.info(f"PDDL generated effect{seed_vec}")
+                s_time = time.time()
+                iter_ae_vectors, iter_guidance_vecs, iter_val_loss, model_weight_paths = \
+                    self.gen_ae_vectors4pred(curr_pred, ent_idx, pred_save_path, \
+                                            pred_config, data,seed_vec)
+                if len(model_weight_paths) == 0:
+                    logging.info(f"cannot find weight!")
+                    break
+
+                # Do we have a low-objective ae vector?
+                logging.info(f"Learning Done in {time.time()-s_time} sec, ")
+                # ------------------------------------------------------------------
+                # KEEP **all** candidate vectors – no objective, no precond check
+                # ------------------------------------------------------------------
+                for k, ae_vector in enumerate(iter_ae_vectors):
+                    self.learned_ae_pred_info[curr_pred]['ae_vecs'].append(ae_vector.clone())
+                    self.learned_ae_pred_info[curr_pred]['scores'].append(iter_guidance_vecs[k].clone())
+                    self.learned_ae_pred_info[curr_pred]['model_weights'].append(model_weight_paths[k])
+                    logging.info(f"[{curr_pred.name}] kept AE-vector #{k} without screening.")
+
+               
+               
+              
+                
+            
+            logging.info(f"******************Learning Done for {curr_pred.name}! Summary:******************")
             self.learned_ae_pred_info[curr_pred]['learned'] = True
             predicate_vars_basic = []
             for i, t in enumerate(curr_pred.types):

@@ -29,7 +29,7 @@ do
         --load_neupi_from_json True \
         --timeout 5 \
         --approach_dir "saved_approaches/open_models/satellites/ivntr_$seed" \
-        --neupi_save_path "saved_approaches/demo/satellites/ivntr_$seed" \
+        --neupi_save_path "saved_approaches/open_models/satellites/ivntr_$seed" \
         --log_file logs/satellites/ivntr_ood_test_$seed.log; then
         echo "Seed $seed completed successfully."
     else
@@ -71,7 +71,7 @@ do
         --bilevel_plan_without_sim False \
         --execution_monitor expected_atoms \
         --load_approach \
-        --load_neupi_from_json True \
+        --load_neupi_from_json False \
         --in_domain_test True \
         --timeout 5 \
         --approach_dir "saved_approaches/open_models/satellites/ivntr_$seed" \

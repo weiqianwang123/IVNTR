@@ -140,12 +140,15 @@ def _learn_neural_sampler(datastores: List[Datastore], nsrt_name: str,
     X_classifier: List[List[Array]] = []
     has_pcd = False
     dropped_dim = 0
+   
     for state, sub, option, goal in positive_data + negative_data:
         # input is state features and option parameters
         X_classifier.append([np.array(1.0)])  # start with bias term
         for var in variables:
             obj = sub[var]
             data = state[obj]
+            logging.info("data:")
+            logging.info(data)
             if CFG.domain_sampler_data_filter is not None:
                 desired_feat_id = CFG.domain_sampler_data_filter[obj.type.name]
                 filtered_data = [d for i, d in enumerate(data) if i in desired_feat_id]

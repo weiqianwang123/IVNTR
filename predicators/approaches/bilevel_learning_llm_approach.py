@@ -55,7 +55,8 @@ from predicators.structs import Dataset, GroundAtom, GroundAtomTrajectory, LowLe
     Action
 from predicators.structs import NSRT, PNAD, GroundAtomTrajectory, \
     LowLevelTrajectory, ParameterizedOption, Predicate, Segment, Task
-from predicators.llm.llm_for_effect import LLMEffectVectorGenerator,LLMEffectVectorGeneratorV2,LLMEffectVectorGeneratorV3,two2one
+# from predicators.llm.llm_for_effect import LLMEffectVectorGenerator,LLMEffectVectorGeneratorV2,LLMEffectVectorGeneratorV3,two2one
+from predicators.llm.llm_for_effect_new import LLMEffectVectorGenerator,constraints_to_vector
 
 
 _Output = TypeVar("_Output")  # a generic type for the output of this GNN
@@ -820,51 +821,10 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                     raise ValueError('Unknown constraint type')
             
             if llm_generator is not None:
-                def constraints_to_vector(row_names: List[ParameterizedOption],
-                                        constraints: List[Tuple]) -> list[list[int]]:
-                    """
-                    Return allowed_codes[action_index] → list of permissible integers {0,1,2}.
+                
 
-                    Mapping from the original two-channel rules
-                        • channel==0, value==1  → only code 1   (add effect required)
-                        • channel==0, value==0  → code 1 forbidden
-                        • channel==1, value==1  → only code 2   (delete effect required)
-                        • channel==1, value==0  → code 2 forbidden
-                    The intersection of all rules for the same action is kept.
-                    """
-                    n_actions = len(row_names)
-                    allowed = [set([0, 1, 2]) for _ in range(n_actions)]
 
-                    for rule in constraints:
-                        if rule[0] != "position":
-                            continue
-                        row, _, channel, value = rule[1:]
-
-                        if channel == 0:            # ADD channel
-                            if value == 1:
-                                allowed[row] = {1}
-                            else:                   # value == 0
-                                allowed[row].discard(1)
-
-                        elif channel == 1:          # DELETE channel
-                            if value == 1:
-                                allowed[row] = {2}
-                            else:                   # value == 0
-                                allowed[row].discard(2)
-
-                    # convert sets → sorted lists for JSON friendliness
-                    return [sorted(list(codes)) for codes in allowed]
-
-                def constraints_to_hint(*, row_names, constraints):
-                    """Return one-liner JSON-ish string for the LLM prompt."""
-                    vec = constraints_to_vector(row_names, constraints)
-                    return "CONSTRAINT_MATRIX = " + str(vec)
-                hint_txt = constraints_to_hint(
-                    row_names = self.ae_row_names,
-                    constraints = constraints
-                )
-
-                symbolic_proposal = llm_generator.generate(hint=hint_txt)
+                symbolic_proposal = llm_generator.generate()
                 logging.info(f"Symbolic proposal: {symbolic_proposal}")
                 if symbolic_proposal is None:
                     return sat_vectors
@@ -898,7 +858,7 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                 # guidance = np.array([np.inf for _ in range(len(self.ae_row_names))])
                 # # unsatisfiable node, update searcher
                 logging.info(f"Vector not satisfiable.")
-                llm_generator.update_loss(symbolic_proposal, float("inf"))
+                # llm_generator.update_loss(symbolic_proposal, float("inf"))
         return sat_vectors
             
     def _setup_input_fields(
@@ -1605,12 +1565,19 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                                         pred_config['architecture'],
                                         self._node_feature_to_index,
                                         self._edge_feature_to_index)
-            llm_generator = LLMEffectVectorGeneratorV3(
+            constraints = self.learned_ae_pred_info[curr_pred]['constraints']
+            constraint_vec = constraints_to_vector(self.ae_row_names, constraints)
+            logging.info(f"sorting options for {curr_pred.name}...{self._sorted_options}")
+            llm_generator = LLMEffectVectorGenerator(
                 target_pred=curr_pred,
-                sorted_options=list(self._initial_options),
-                domain_desc=self.pred_config[0]['domain_desc']
+                sorted_options=list(self._sorted_options),
+                domain_desc=self.pred_config[0]['domain_desc'],
+                constraint_matrix = constraint_vec ,
             )
-            num_vectors_to_generate = num_vectors_to_generate_list[curr_pred.arity-1]
+            # num_vectors_to_generate = num_vectors_to_generate_list[curr_pred.arity-1]
+            num_vectors_to_generate = pred_config.get(
+                "num_vectors_to_generate"
+            )
             logging.info(f"Number of vectors to generate for {curr_pred.name}: {num_vectors_to_generate}")
             symbolic_search_model = HierachicalMCTSearcher(
                                             len(self.ae_row_names),
@@ -1690,9 +1657,9 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                     if len(model_weight_paths) == 0:
                         logging.info(f"Early Stopping at Iteration {iteration}!")
                         break
-                    if llm_generator is not None:
-                        for vec, vloss in zip(iter_ae_vectors, iter_val_loss):
-                            llm_generator.update_loss(two2one(vec), float(vloss))
+                    # if llm_generator is not None:
+                    #     for vec, vloss in zip(iter_ae_vectors, iter_val_loss):
+                    #         llm_generator.update_loss(two2one(vec), float(vloss))
 
                     # Do we have a low-objective ae vector?
                     logging.info(f"Learning Done in {time.time()-s_time} sec, Checking if exists low-objective ae vector...")

@@ -277,6 +277,9 @@ class BilevelLearningApproach(NSRTLearningApproach):
             assert len(self.final_op) == len(self._sorted_options), "Final Op Not Match"
 
         for pred_info in self.pred_config:
+            if pred_info['name'] == "other":
+                print("Skip Other Info")
+                continue
             pred_name = pred_info['name']
             types_str = pred_info['types']
             types = [self._obj_types[t] for t in types_str]
@@ -326,6 +329,7 @@ class BilevelLearningApproach(NSRTLearningApproach):
         # provided predicates
         # this is used to generate the ae matrix
         for pred in sorted(self._initial_predicates):
+            
             if pred.name in self.neupi_non_effect_predicates:
                 # We don't want to consider predicates that are not effect predicates
                 continue

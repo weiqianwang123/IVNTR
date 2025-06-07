@@ -8,7 +8,7 @@ do
     # Record start time
     start_time=$(date +%s)
     # low-level sampling is very hard for this environment
-    if python3 predicators/main.py --env satellites --approach ivntr \
+    if python3 predicators/main.py --env satellites --approach ivntr-llm \
         --seed $seed --offline_data_method "demo" \
         --disable_harmlessness_check True \
         --excluded_predicates "ViewClear,IsCalibrated,HasChemX,HasChemY,Sees" \
@@ -28,9 +28,9 @@ do
         --load_approach \
         --load_neupi_from_json True \
         --timeout 5 \
-        --approach_dir "saved_approaches/open_models/satellites/ivntr_$seed" \
-        --neupi_save_path "saved_approaches/demo/satellites/ivntr_$seed" \
-        --log_file logs/satellites/ivntr_ood_test_$seed.log; then
+        --approach_dir "saved_approaches/demo/satellites/ivntr_llm_$seed" \
+        --neupi_save_path "saved_approaches/demo/satellites/ivntr_llm_$seed" \
+        --log_file logs/satellites/ivntr_ood_test_llm_$seed.log; then
         echo "Seed $seed completed successfully."
     else
         echo "Seed $seed encountered an error."
@@ -53,7 +53,7 @@ do
     # Record start time
     start_time=$(date +%s)
     # low-level sampling is very hard for this environment
-    if python3 predicators/main.py --env satellites --approach ivntr \
+    if python3 predicators/main.py --env satellites --approach ivntr-llm \
         --seed $seed --offline_data_method "demo" \
         --disable_harmlessness_check True \
         --excluded_predicates "ViewClear,IsCalibrated,HasChemX,HasChemY,Sees" \

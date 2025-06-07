@@ -239,8 +239,8 @@ def method2json(content: Dict, base_path: str):
     with open(base_path, 'w') as f:
         json.dump(method_dict, f, indent=4)
 
-for seed in [0,1,2,3,4]:
-    base_path = f'saved_approaches/final/view_plan_trivial/biplan_{seed}'
+for seed in [0]:
+    base_path = f'saved_approaches/demo/satellites/ivntr_llm_{seed}'
     all_files = glob.glob(os.path.join(base_path, '*.neupi_info'))
     for file in tqdm(all_files):
         name = os.path.basename(file)

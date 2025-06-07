@@ -7,6 +7,7 @@ config:
     domain_desc: "There are some number of satellites,each carrying an instrument.The possible instruments are: (1) a camera, (2) an infrared sensor, (3) a Geiger counter.Additionally, each satellite may be able to shoot Chemical X and/or Chemical Y.The satellites have a viewing cone within which they can see everything that is not occluded.The goal is for specific satellites to take readings of specific objects with calibrated instruments."
   - name: "neural_u_p1"
     types: ["satellite"]
+    # gt: [[1,0,0,0,0,0,0,0]]
     ent_idx: [0]
     architecture: 
       type: "MLP"
@@ -35,6 +36,7 @@ config:
   
   - name: "neural_u_p2"
     types: ["object"]
+    # gt: [[0,0,0,1,0,0,0,0],[0,0,0,0,1,0,0,0]]
     ent_idx: [0]
     architecture:
       type: "MLP"
@@ -65,6 +67,7 @@ config:
   - name: "neural_b_p3"
     types: ["satellite", "object"]
     ent_idx: [0, 0]
+    # gt: [[0,2,1,0,0,0,0,0],[1,0,0,0,0,0,0,0]]
     architecture:
       type: "MLP"
       layer_size: 128
@@ -94,6 +97,7 @@ config:
   - name: "neural_b_p4"
     types: ["object", "satellite"]
     ent_idx: [0, 0]
+    # gt: [[0, 2, 1, 0, 0, 0, 0, 0]]
     architecture:
       type: "MLP"
       layer_size: 128

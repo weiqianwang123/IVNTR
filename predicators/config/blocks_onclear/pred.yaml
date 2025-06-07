@@ -6,6 +6,7 @@ config:
     domain_desc: "The robot needs to manipulate a set of blocks (which were initialized as random towers) and pack them into required pairs. In order to pack two blocks, oneblock needs to be on the top of another with the bottom block on the table and the top block clear."
   - name: "neural_u_p1"
     types: ["robot"]
+    num_vectors_to_generate: 2
     ent_idx: [0]
     architecture: 
       type: "MLP"
@@ -34,6 +35,7 @@ config:
   
   - name: "neural_u_p2"
     types: ["block"]
+    num_vectors_to_generate: 5
     ent_idx: [0]
     architecture:
       type: "MLP"
@@ -63,6 +65,7 @@ config:
 
   - name: "neural_u_p3"
     types: ["block"]
+    num_vectors_to_generate: 0
     ent_idx: [1]
     architecture:
       type: "MLP"
@@ -92,6 +95,7 @@ config:
 
   - name: "neural_b_p4"
     types: ["block", "block"]
+    num_vectors_to_generate: 2
     ent_idx: [0, 1]
     architecture:
       type: "MLP"
@@ -121,6 +125,7 @@ config:
 
   - name: "neural_b_p5"
     types: ["block", "block"]
+    num_vectors_to_generate: 2
     ent_idx: [1, 0]
     architecture:
       type: "MLP"
@@ -150,6 +155,7 @@ config:
 
   - name: "neural_b_p6"
     types: ["robot", "block"]
+    num_vectors_to_generate: 5
     ent_idx: [0, 0]
     architecture:
       type: "MLP"
@@ -179,6 +185,7 @@ config:
 
   - name: "neural_b_p7"
     types: ["robot", "block"]
+    num_vectors_to_generate: 0
     ent_idx: [0, 1]
     architecture:
       type: "MLP"

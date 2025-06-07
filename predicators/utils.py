@@ -4327,6 +4327,7 @@ def parse_str2nsrt(dummy_nsrt_dict: Dict,
                                             reg_weight_path, reg_info_path)
         else:
             sampler = None
+            logging.info(f"Creating neural sampler as none")
         nsrt = NSRT(name=name, parameters=parameters, preconditions=preconditions,
                     add_effects=add_effects, delete_effects=delete_effects,
                     ignore_effects=set(), option=option,
