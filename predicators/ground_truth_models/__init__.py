@@ -174,6 +174,13 @@ def get_gt_options(env_name: str) -> Set[ParameterizedOption]:
         predicates = {p.name: p for p in env.predicates}
         options = ToolsGroundTruthOptionFactory().get_options(
             env_name, types, predicates, env.action_space)
+    elif env_name == "tools-pcd":
+        from predicators.ground_truth_models.tools_pcd.options import \
+            ToolsPCDGroundTruthOptionFactory
+        types = {t.name: t for t in env.types}
+        predicates = {p.name: p for p in env.predicates}
+        options = ToolsPCDGroundTruthOptionFactory().get_options(
+            env_name, types, predicates, env.action_space)
     else:
         raise NotImplementedError("Ground-truth options not implemented for "
                                   f"env: {env_name}")
@@ -191,6 +198,7 @@ def get_gt_nsrts(env_name: str, predicates_to_keep: Set[Predicate],
     assert predicates_to_keep.issubset(env.predicates)
     assert options_to_keep.issubset(env_options)
     for cls in utils.get_all_subclasses(GroundTruthNSRTFactory):
+        print(cls.get_env_names())
         if not cls.__abstractmethods__ and env_name in cls.get_env_names():
             factory = cls()
             # Give all predicates and options, then filter based on kept ones
@@ -202,7 +210,16 @@ def get_gt_nsrts(env_name: str, predicates_to_keep: Set[Predicate],
             nsrts = factory.get_nsrts(env_name, types, predicates, options)
             break
     else:  # pragma: no cover
-        raise NotImplementedError("Ground-truth NSRTs not implemented for "
+        if env_name == "tools-pcd":
+            from predicators.ground_truth_models.tools_pcd.nsrts import \
+                ToolsPCDGroundTruthNSRTFactory
+            types = {t.name: t for t in env.types}
+            predicates = {p.name: p for p in env.predicates}
+            options = {o.name: o for o in env_options}
+            nsrts = ToolsPCDGroundTruthNSRTFactory().get_nsrts(
+                env_name, types, predicates, options)
+        else:
+            raise NotImplementedError("Ground-truth NSRTs not implemented for "
                                   f"env: {env_name}")
     # Filter out excluded predicates from NSRTs, and filter out NSRTs whose
     # options are excluded.
