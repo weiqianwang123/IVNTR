@@ -1035,6 +1035,8 @@ def setup_neupi_mlp_net(graph_dataset: GraphTransC2DDataset,
         raise ValueError(f"Unsupported pred_arity: {pred_arity}")
     if archi["type"] == "MLP":
         assert "layer_size" in archi
+        for feat in node_feat2inx.keys():
+            logging.info(f"Node feature {feat} index: {node_feat2inx[feat]}")
         layer_size = archi["layer_size"]
         encoder_model = MLP([layer_size, layer_size*2], input_dim, True)
         decoder_model = MLP([layer_size*2, layer_size, 1], layer_size*2, False)

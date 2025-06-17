@@ -57,7 +57,12 @@ class ToolsPCDGroundTruthNSRTFactory(GroundTruthNSRTFactory):
         PickHammer = options["PickHammer"]
         PickBolt = options["PickBolt"]
         PickWrench = options["PickWrench"]
-        Place = options["Place"]
+        PlaceScrewdriverBack = options["PlaceScrewdriverBack"]
+        PlaceHammerBack = options["PlaceHammerBack"]
+        PlaceWrenchBack = options["PlaceWrenchBack"]
+        PlaceScrewOnContraption = options["PlaceScrewOnContraption"]
+        PlaceNailOnContraption = options["PlaceNailOnContraption"]
+        PlaceBoltOnContraption = options["PlaceBoltOnContraption"]
         FastenScrewWithScrewdriver = options["FastenScrewWithScrewdriver"]
         # FastenScrewByHand = options["FastenScrewByHand"]
         FastenNailWithHammer = options["FastenNailWithHammer"]
@@ -97,8 +102,8 @@ class ToolsPCDGroundTruthNSRTFactory(GroundTruthNSRTFactory):
         screwdriver = Variable("?screwdriver", screwdriver_type)
         screw= Variable("?screw", screw_type)
         contraption = Variable("?contraption", contraption_type)
-        parameters = [robot,screwdriver,screw, contraption]
-        option_vars = [robot, screwdriver]
+        parameters = [robot,screwdriver,screw,contraption]
+        option_vars = [robot, screwdriver,screw]
         option = AdjustScrewdriverShape
         preconditions = {
             LiftedAtom(HoldingScrewdriver, [screwdriver]),
@@ -211,8 +216,8 @@ class ToolsPCDGroundTruthNSRTFactory(GroundTruthNSRTFactory):
         robot = Variable("?robot", robot_type)
         screwdriver = Variable("?screwdriver", screwdriver_type)
         parameters = [robot, screwdriver]
-        option_vars = [robot]
-        option = Place
+        option_vars = [robot,screwdriver]
+        option = PlaceScrewdriverBack
         preconditions = {
             LiftedAtom(HoldingScrewdriver, [screwdriver]),
             LiftedAtom(ScrewdriverGraspable, [screwdriver])
@@ -228,8 +233,8 @@ class ToolsPCDGroundTruthNSRTFactory(GroundTruthNSRTFactory):
         robot = Variable("?robot", robot_type)
         hammer = Variable("?hammer", hammer_type)
         parameters = [robot, hammer]
-        option_vars = [robot]
-        option = Place
+        option_vars = [robot, hammer]
+        option = PlaceHammerBack
         preconditions = {
             LiftedAtom(HoldingHammer, [hammer]),
             LiftedAtom(HammerGraspable, [hammer])
@@ -245,8 +250,8 @@ class ToolsPCDGroundTruthNSRTFactory(GroundTruthNSRTFactory):
         robot = Variable("?robot", robot_type)
         wrench = Variable("?wrench", wrench_type)
         parameters = [robot, wrench]
-        option_vars = [robot]
-        option = Place
+        option_vars = [robot,wrench]
+        option = PlaceWrenchBack
         preconditions = {LiftedAtom(HoldingWrench, [wrench])}
         add_effects = {LiftedAtom(HandEmpty, [robot])}
         delete_effects = {LiftedAtom(HoldingWrench, [wrench])}
@@ -260,8 +265,8 @@ class ToolsPCDGroundTruthNSRTFactory(GroundTruthNSRTFactory):
         screw = Variable("?screw", screw_type)
         contraption = Variable("?contraption", contraption_type)
         parameters = [robot, screw, contraption]
-        option_vars = [robot]
-        option = Place
+        option_vars = [robot, screw, contraption]
+        option = PlaceScrewOnContraption
         preconditions = {LiftedAtom(HoldingScrew, [screw])}
         add_effects = {
             LiftedAtom(HandEmpty, [robot]),
@@ -278,8 +283,8 @@ class ToolsPCDGroundTruthNSRTFactory(GroundTruthNSRTFactory):
         nail = Variable("?nail", nail_type)
         contraption = Variable("?contraption", contraption_type)
         parameters = [robot, nail, contraption]
-        option_vars = [robot]
-        option = Place
+        option_vars = [robot, nail, contraption]
+        option = PlaceNailOnContraption
         preconditions = {LiftedAtom(HoldingNail, [nail])}
         add_effects = {
             LiftedAtom(HandEmpty, [robot]),
@@ -296,8 +301,8 @@ class ToolsPCDGroundTruthNSRTFactory(GroundTruthNSRTFactory):
         bolt = Variable("?bolt", bolt_type)
         contraption = Variable("?contraption", contraption_type)
         parameters = [robot, bolt, contraption]
-        option_vars = [robot]
-        option = Place
+        option_vars = [robot, bolt, contraption]
+        option = PlaceBoltOnContraption
         preconditions = {LiftedAtom(HoldingBolt, [bolt])}
         add_effects = {
             LiftedAtom(HandEmpty, [robot]),

@@ -21,7 +21,7 @@ from predicators.envs import BaseEnv
 from predicators.settings import CFG
 from predicators.structs import Action, EnvironmentTask, GroundAtom, Object, \
     Predicate, State, Type
-
+from predicators import utils
 
 
 import argparse
@@ -69,7 +69,7 @@ def obj_to_pointcloud(obj_path: str,
             raise IOError(f"Open3D couldn’t write {save_path}")
         print(f"Saved {n_points} pts → {save_path}")
 
-    return pcd
+    return points.astype(np.float32)
 
 
 class ToolsPCDEnv(BaseEnv):
@@ -97,11 +97,11 @@ class ToolsPCDEnv(BaseEnv):
 
     # Types
     _robot_type = Type("robot", ["fingers"])
-    _screw_type = Type("screw", pcd_attrs +
-    ["pose_x", "pose_y", "shape", "is_fastened", "is_held"])
+    _screw_type = Type("screw", 
+    ["pcd","pose_x", "pose_y", "shape", "is_fastened", "is_held"])
 
-    _screwdriver_type = Type("screwdriver", pcd_attrs +
-    ["pose_x", "pose_y", "shape", "size", "is_held"])
+    _screwdriver_type = Type("screwdriver", 
+    ["pcd","pose_x", "pose_y", "shape", "size", "is_held"])
     _nail_type = Type("nail", ["pose_x", "pose_y", "is_fastened", "is_held"])
     _hammer_type = Type("hammer", ["pose_x", "pose_y", "size", "is_held"])
     _bolt_type = Type("bolt", ["pose_x", "pose_y", "is_fastened", "is_held"])
@@ -180,6 +180,10 @@ class ToolsPCDEnv(BaseEnv):
             screwdriver_shape = state.get(held, "shape")
             screwdriver_new_shape =  abs(screwdriver_shape - 1.0) 
             next_state.set(held, "shape", screwdriver_new_shape)
+            screw_mesh_file = f"mesh/Screwdriver_{int(screwdriver_new_shape) + 1}.obj"
+            pcd = obj_to_pointcloud(screw_mesh_file, n_points=self.pcd_dim)  
+            next_state.set(held, "pcd", pcd)  
+            # Update the point cloud of the screwdriver
             return next_state
         if is_place > 0.5:
             # Handle placing
@@ -305,161 +309,183 @@ class ToolsPCDEnv(BaseEnv):
             caption: Optional[str] = None) -> matplotlib.figure.Figure:
         raise NotImplementedError
 
-    def _get_tasks(self, num_tasks: int, num_items_lst: List[int],
-                   num_contraptions_lst: List[int],
-                   rng: np.random.Generator) -> List[EnvironmentTask]:
-        tasks = []
+
+    def _get_tasks(self,
+                num_tasks: int,
+                num_items_lst: List[int],
+                num_contraptions_lst: List[int],
+                rng: np.random.Generator) -> List[EnvironmentTask]:
+        """Generate train / test tasks with new pcd-in-dict format."""
+        tasks: List[EnvironmentTask] = []
+
+        # ----------------------------------------------------------------------- #
+        #  Helper：检测 (x,y) 是否与已存在物体/装置碰撞                              #
+        # ----------------------------------------------------------------------- #
+        def _collides(x: float, y: float,
+                    existing: List[Tuple[float, float]],
+                    thresh: float) -> bool:
+            return any(abs(ex_x - x) < thresh and abs(ex_y - y) < thresh
+                    for ex_x, ex_y in existing)
+
         for i in range(num_tasks):
-            num_items = num_items_lst[i % len(num_items_lst)]
-            num_contraptions = num_contraptions_lst[i %
-                                                    len(num_contraptions_lst)]
-            data = {}
-            # Initialize robot with open fingers
-            data[self._robot] = np.array([1.0], dtype=np.float32)
+            num_items         = num_items_lst[i % len(num_items_lst)]
+            num_contraptions  = num_contraptions_lst[i % len(num_contraptions_lst)]
+
+            # =============== 1. 组装 state_dict ================================= #
+            state_dict: Dict[Object, Dict[str, np.ndarray | float]] = {}
+
+            # 1-a 机器人
+            state_dict[self._robot] = {"fingers": 1.0}
+
+            # ---------------- Contraptions ------------------------------------- #
             contraptions: List[Object] = []
-            # Initialize contraptions
+            contraption_coords: List[Tuple[float, float]] = []
             for j in range(num_contraptions):
                 contraption = Object(f"contraption{j}", self._contraption_type)
                 while True:
-                    pose_lx = rng.uniform(
-                        self.table_lx, self.table_ux - self.contraption_size)
-                    pose_ly = rng.uniform(
-                        self.table_ly, self.table_uy - self.contraption_size)
-                    pose_ux = pose_lx + self.contraption_size
-                    pose_uy = pose_ly + self.contraption_size
-                    # Make sure no other contraption intersects with this one
-                    if all(data[other][0] + self.contraption_size < pose_lx or \
-                           data[other][0] > pose_ux or \
-                           data[other][1] + self.contraption_size < pose_ly or \
-                           data[other][1] > pose_uy for other in contraptions):
+                    lx = rng.uniform(self.table_lx,
+                                    self.table_ux - self.contraption_size)
+                    ly = rng.uniform(self.table_ly,
+                                    self.table_uy - self.contraption_size)
+                    if not _collides(lx, ly, contraption_coords, self.contraption_size):
                         break
+                contraption_coords.append((lx, ly))
                 contraptions.append(contraption)
-                data[contraption] = np.array([pose_lx, pose_ly],
-                                             dtype=np.float32)
-            # Initialize items (screws, nails, bolts) and set goal
-            # We enforce that there can only be at most one screw, to make
-            # the problems generally easier to solve
+                state_dict[contraption] = {"pose_lx": lx, "pose_ly": ly}
+
+            # ---------------- Items (screw / nail / bolt) ---------------------- #
             items: List[Object] = []
-            screw_cnt, nail_cnt, bolt_cnt = 0, 0, 0
-            goal = set()
+            item_coords: List[Tuple[float, float]] = []
+            screw_cnt = nail_cnt = bolt_cnt = 0
+            goal: Set[GroundAtom] = set()
+
             for _ in range(num_items):
                 while True:
-                    pose_x = rng.uniform(self.table_lx, self.table_ux)
-                    pose_y = rng.uniform(self.table_ly, self.table_uy)
-                    # Make sure no contraption or other item intersects
-                    # with this one
-                    some_contraption_collides = any(
-                        (data[c][0] < pose_x <
-                         data[c][0] + self.contraption_size) and \
-                        (data[c][1] < pose_y <
-                         data[c][1] + self.contraption_size)
-                        for c in contraptions)
-                    some_item_collides = any(
-                        abs(data[i][0] - pose_x) < self.close_thresh and \
-                        abs(data[i][1] - pose_y) < self.close_thresh
-                        for i in items)
-                    if not some_contraption_collides and not some_item_collides:
+                    ix = rng.uniform(self.table_lx, self.table_ux)
+                    iy = rng.uniform(self.table_ly, self.table_uy)
+                    # 与 contraption / 现有 item 不冲突
+                    contraption_hit = any(
+                        (lx < ix < lx + self.contraption_size) and
+                        (ly < iy < ly + self.contraption_size)
+                        for lx, ly in contraption_coords)
+                    if not contraption_hit and \
+                    not _collides(ix, iy, item_coords, self.close_thresh):
                         break
-                is_fastened = 0.0  # always start off not fastened
-                is_held = 0.0  # always start off not held
+
+                is_fastened = is_held = 0.0
                 choices = ["screw", "nail", "bolt"]
                 if screw_cnt > 0:
-                    choices.remove("screw")
+                    choices.remove("screw")        # 题目限定至多一个螺丝
                 choice = rng.choice(choices)
-                goal_contraption = contraptions[rng.integers(
-                    len(contraptions))]
+                goal_contraption = rng.choice(contraptions)
+
                 if choice == "screw":
                     item = Object(f"screw{screw_cnt}", self._screw_type)
                     screw_cnt += 1
-                    shape = float(rng.choice(self.SHAPES))  # discrete shape
-                    # mesh decides the shape of the screw head
-                    screw_mesh_file = f"mesh/Screw_{int(shape) + 1}.obj"
-                    pcd = obj_to_pointcloud(screw_mesh_file, n_points=self.pcd_dim)
-                    pcd_np = np.asarray(pcd.points).flatten()[:self.pcd_dim * 3]  
+                    shape = float(rng.choice(self.SHAPES))
 
-                    feats = np.concatenate([
-                        pcd_np,
-                        np.array([pose_x, pose_y, shape, is_fastened, is_held], dtype=np.float32)
-                    ])
+                    mesh_file = f"mesh/Screw_{int(shape)+1}.obj"
+                    pcd = obj_to_pointcloud(mesh_file, n_points=self.pcd_dim)
+
+                    state_dict[item] = {
+                        "pcd"        : pcd,          # (N,3)
+                        "pose_x"     : ix,
+                        "pose_y"     : iy,
+                        "shape"      : shape,
+                        "is_fastened": is_fastened,
+                        "is_held"    : is_held,
+                    }
                     goal.add(GroundAtom(self._ScrewFastened, [item]))
-                    goal.add(
-                        GroundAtom(self._ScrewPlaced,
-                                   [item, goal_contraption]))
+                    goal.add(GroundAtom(self._ScrewPlaced, [item, goal_contraption]))
+
                 elif choice == "nail":
                     item = Object(f"nail{nail_cnt}", self._nail_type)
                     nail_cnt += 1
-                    feats = [pose_x, pose_y, is_fastened, is_held]
+                    state_dict[item] = {
+                        "pose_x"     : ix,
+                        "pose_y"     : iy,
+                        "is_fastened": is_fastened,
+                        "is_held"    : is_held,
+                    }
                     goal.add(GroundAtom(self._NailFastened, [item]))
-                    goal.add(
-                        GroundAtom(self._NailPlaced, [item, goal_contraption]))
-                elif choice == "bolt":
+                    goal.add(GroundAtom(self._NailPlaced, [item, goal_contraption]))
+
+                else:   # bolt
                     item = Object(f"bolt{bolt_cnt}", self._bolt_type)
                     bolt_cnt += 1
-                    feats = [pose_x, pose_y, is_fastened, is_held]
+                    state_dict[item] = {
+                        "pose_x"     : ix,
+                        "pose_y"     : iy,
+                        "is_fastened": is_fastened,
+                        "is_held"    : is_held,
+                    }
                     goal.add(GroundAtom(self._BoltFastened, [item]))
-                    goal.add(
-                        GroundAtom(self._BoltPlaced, [item, goal_contraption]))
-                items.append(item)
-                data[item] = np.array(feats, dtype=np.float32)
-            # Initialize tools (screwdrivers, hammers, wrenches).
-            # We'll force one of the screwdrivers and one of the hammers to
-            # be too large for grasping. Wrenches are always graspable.
-            tools: List[Object] = []
-            screwdriver_sizes = [
-                rng.uniform(0, 0.5) for _ in range(self.num_screwdrivers)
-            ]
-            hammer_sizes = [
-                rng.uniform(0, 0.5) for _ in range(self.num_hammers)
-            ]
-            hammer_sizes[rng.integers(self.num_hammers)] = rng.uniform(0.5, 1)
-            wrench_sizes = [
-                rng.uniform(0, 1) for _ in range(self.num_wrenches)
-            ]
-            sizes = screwdriver_sizes + hammer_sizes + wrench_sizes
-            for j, size in enumerate(sizes):
-                while True:
-                    pose_x = rng.uniform(self.table_lx, self.table_ux)
-                    pose_y = rng.uniform(self.table_ly, self.table_uy)
-                    # Make sure no contraption, item, or other tool intersects
-                    # with this one
-                    some_contraption_collides = any(
-                        (data[c][0] < pose_x <
-                         data[c][0] + self.contraption_size) and \
-                        (data[c][1] < pose_y <
-                         data[c][1] + self.contraption_size)
-                        for c in contraptions)
-                    some_item_or_tool_collides = any(
-                        abs(data[it][0] - pose_x) < self.close_thresh and \
-                        abs(data[it][1] - pose_y) < self.close_thresh
-                        for it in items + tools)
-                    if not some_contraption_collides and \
-                       not some_item_or_tool_collides:
-                        break
-                is_held = 0.0  # always start off not held
-                if j < self.num_screwdrivers:
-                    tool = Object(f"screwdriver{j}", self._screwdriver_type)
-                    shape = float(rng.choice(self.SHAPES))  # discrete shape
-                    screwdriver_mesh_file = f"mesh/Screwdriver_{int(shape) + 1}.obj"
-                    pcd = obj_to_pointcloud(screwdriver_mesh_file, n_points=self.pcd_dim)
-                    pcd_np = np.asarray(pcd.points).flatten()[:self.pcd_dim * 3]
+                    goal.add(GroundAtom(self._BoltPlaced, [item, goal_contraption]))
 
-                    feats = np.concatenate([
-                        pcd_np,
-                        np.array([pose_x, pose_y, shape, size, is_held], dtype=np.float32)
-                    ])
-                elif j < self.num_screwdrivers + self.num_hammers:
-                    ind = j - self.num_screwdrivers
-                    tool = Object(f"hammer{ind}", self._hammer_type)
-                    feats = [pose_x, pose_y, size, is_held]
+                items.append(item)
+                item_coords.append((ix, iy))
+
+            # ---------------- Tools -------------------------------------------- #
+            tools: List[Object] = []
+            tool_coords: List[Tuple[float, float]] = []
+
+            screwdriver_sizes = [rng.uniform(0, 0.5) for _ in range(self.num_screwdrivers)]
+            hammer_sizes      = [rng.uniform(0, 0.5) for _ in range(self.num_hammers)]
+            hammer_sizes[rng.integers(self.num_hammers)] = rng.uniform(0.5, 1.0)  # 至少一个过大
+            wrench_sizes      = [rng.uniform(0, 1.0) for _ in range(self.num_wrenches)]
+
+            all_sizes = screwdriver_sizes + hammer_sizes + wrench_sizes
+            for idx, size in enumerate(all_sizes):
+                while True:
+                    tx = rng.uniform(self.table_lx, self.table_ux)
+                    ty = rng.uniform(self.table_ly, self.table_uy)
+                    if not _collides(tx, ty, contraption_coords, self.contraption_size) and \
+                    not _collides(tx, ty, item_coords + tool_coords, self.close_thresh):
+                        break
+
+                is_held = 0.0
+                if idx < self.num_screwdrivers:
+                    tool = Object(f"screwdriver{idx}", self._screwdriver_type)
+                    shape = float(rng.choice(self.SHAPES))
+                    mesh_file = f"mesh/Screwdriver_{int(shape)+1}.obj"
+                    pcd = obj_to_pointcloud(mesh_file, n_points=self.pcd_dim)
+
+                    state_dict[tool] = {
+                        "pcd"     : pcd,
+                        "pose_x"  : tx,
+                        "pose_y"  : ty,
+                        "shape"   : shape,
+                        "size"    : size,
+                        "is_held" : is_held,
+                    }
+                elif idx < self.num_screwdrivers + self.num_hammers:
+                    h_idx = idx - self.num_screwdrivers
+                    tool = Object(f"hammer{h_idx}", self._hammer_type)
+                    state_dict[tool] = {
+                        "pose_x"  : tx,
+                        "pose_y"  : ty,
+                        "size"    : size,
+                        "is_held" : is_held,
+                    }
                 else:
-                    ind = j - self.num_screwdrivers - self.num_hammers
-                    tool = Object(f"wrench{ind}", self._wrench_type)
-                    feats = [pose_x, pose_y, size, is_held]
+                    w_idx = idx - self.num_screwdrivers - self.num_hammers
+                    tool = Object(f"wrench{w_idx}", self._wrench_type)
+                    state_dict[tool] = {
+                        "pose_x"  : tx,
+                        "pose_y"  : ty,
+                        "size"    : size,
+                        "is_held" : is_held,
+                    }
+
                 tools.append(tool)
-                data[tool] = np.array(feats, dtype=np.float32)
-            state = State(data)
+                tool_coords.append((tx, ty))
+
+            # =============== 2. 生成 State & Task ============================== #
+            state = utils.create_state_from_dict(state_dict)
             tasks.append(EnvironmentTask(state, goal))
+
         return tasks
+
 
     @staticmethod
     def _HandEmpty_holds(state: State, objects: Sequence[Object]) -> bool:

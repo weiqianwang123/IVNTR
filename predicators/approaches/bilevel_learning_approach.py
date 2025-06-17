@@ -479,6 +479,37 @@ class BilevelLearningApproach(NSRTLearningApproach):
                         raise ValueError("Should be 0 or 1, got {}".format(ae_matrix[row, col, channel]))
         
         return solver.check() == sat
+    
+    def _get_diff_noising_pcd(self,state, state_, obj) -> np.ndarray:
+        """
+        返回 two states 对同一对象标量差分。
+        若对象只有 pcd 特征，则直接比较 pcd（展平成 1-D）。
+        """
+        # --- 1. 找出 pcd 列索引 -------------------------------------------------
+        pcd_idx = [i for i, name in enumerate(obj.type.feature_names)
+                if "pcd" in name.lower()]          # 需要时把 'norm' 也加进来
+
+        # --- 2. 拆出原始特征 ----------------------------------------------------
+        feat  = state [obj]
+        feat_ = state_[obj]
+
+        # 判定是否“只有 pcd”
+        only_pcd = len(pcd_idx) == len(obj.type.feature_names)
+
+        if not only_pcd:
+            # -------- 3A. 既有 pcd 又有标量 → 过滤 pcd 只比标量 ---------------
+            scalars  = [v for i, v in enumerate(feat ) if i not in pcd_idx]
+            scalars_ = [v for i, v in enumerate(feat_) if i not in pcd_idx]
+            if not scalars:           # 意外全被过滤掉
+                return np.zeros(0)
+            return np.asarray(scalars_, dtype=float) - np.asarray(scalars, dtype=float)
+        else:
+            # -------- 3B. 只有 pcd → 保留 pcd，转平面向量再比较 --------------
+            arr  = np.asarray(feat , dtype=float).ravel()
+            arr_ = np.asarray(feat_, dtype=float).ravel()
+            # 若两朵云点数不同，可先截断 / 采样：arr_, arr = _align(arr_, arr)
+            return arr_ - arr
+
 
     def initialize_ae_constraints(self, data: List[Tuple[State, Set[GroundAtom], State, Set[GroundAtom], \
                                    _Option, str]], channels: int=1) -> torch.Tensor:
@@ -499,10 +530,14 @@ class BilevelLearningApproach(NSRTLearningApproach):
         for state, _, state_, _, action, _ in data:
             action_index = self.ae_row_names.index(action.parent)
             operated_objs = action.objects
+            print("Action: {}, Operated Objects: {}".format(action.name, operated_objs))
             for affected_obj in operated_objs:
-                s = state[affected_obj]
-                s_ = state_[affected_obj]
-                diff = s_ - s
+                
+                # s = state[affected_obj]
+                # s_ = state_[affected_obj]
+                # print("Affected Object: {}, State: {}, State_: {}".format(affected_obj.name, s, s_))
+                # diff = s_ - s
+                diff = self._get_diff_noising_pcd(state, state_, affected_obj)
                 if not np.all(diff == 0):
                     for pred in columns:
                         arity = pred.arity
@@ -570,6 +605,8 @@ class BilevelLearningApproach(NSRTLearningApproach):
         all_ae_matrix_dummy[all_ae_matrix_dummy < 0] = -1
         all_ae_matrix_dummy[all_ae_matrix_dummy >= high_bar] = 1
         all_ae_matrix_dummy[(0 <= all_ae_matrix_dummy) & (all_ae_matrix_dummy < low_bar)] = 0
+        print("Initial AE Matrix (Dummy):")
+        print(all_ae_matrix_dummy)
         # check all the matrix entries are -1 1 or 0
         assert ((all_ae_matrix_dummy == 0) | (all_ae_matrix_dummy == 1) \
                 | (all_ae_matrix_dummy == -1)).all(), "Should be -1 0 or 1, check data noise"
@@ -589,6 +626,7 @@ class BilevelLearningApproach(NSRTLearningApproach):
 
         for col in range(width):
             pred_name = columns[col]
+            print("Processing Predicate: {}".format(pred_name.name))
             if all_ae_matrix_dummy[:, col].sum() == 0:
                 # this effect never appears
                 raise ValueError("This effect predicate never appears in data, bug!")

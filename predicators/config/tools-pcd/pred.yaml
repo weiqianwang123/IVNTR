@@ -1,0 +1,465 @@
+final_op: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
+neupi_non_effect_predicates: ['ScrewdriverGraspable','HammerGraspable']
+#operators:AdjustScrewdriverShape, PickScrew,PickScrewdriver,PickNail,PickHammer,
+#PickBolt,PickWrench,PlaceScrewdriverBack,PlaceHammerBack,PlaceWrenchBack,
+#PlaceScrewOnContraption,PlaceNailOnContraption,PlaceBoltOnContraption,FastenScrewWithScrewdriver,FastenNailWithHammer,FastenBoltWithWrench
+
+config:
+  - name: "other"
+    num_vectors_to_generate_list: [2, 2, 1, 2]
+    domain_desc: "Tools domain, where the robot must interact with a variety of items and tools. Items are screws, nails, and bolts. Tools are screwdrivers, wrenches, and hammers. Screws are fastened using screwdrivers or the robot's hand. Nails are fastened using hammers. Bolts are fastened using wrenches. Screwdrivers have a shape and a size. The shape must match the screw shape, but is not captured using any given predicate. Some screw shapes can be fastened using hands directly. The screwdriver's size must be small enough that it is graspable by the robot, which is captured by a predicate. Hammer sizes work the same way as screwdriver sizes. Wrench sizes don't matter"
+  - name: "neural_u_p1"
+    types: ["robot"]
+    gt: [[0,2,2,2,2,2,2,1,1,1,1,1,1,0,0,0]]
+    ent_idx: [0]
+    architecture: 
+      type: "MLP"
+      layer_size: 32
+      initializer: "xavier"
+    optimizer:
+      type: "AdamW"
+      kwargs:
+        lr: 0.001
+    lr_scheduler:
+      type: "StepLR"
+      kwargs:
+        step_size: 70
+        gamma: 0.1
+    batch_vect_num: 12
+    batch_size: 512
+    epochs: 100
+    gumbel_temp: 0.66
+    val_freq: 10
+    num_iter: 5
+    matrix_vec_try: 100
+    search_tree_max_level: 1
+    guidance_thresh: 0.05
+    loss_thresh: 0.005
+    skip_train: False
+  
+  - name: "neural_u_p2"
+    types: ["screw"]
+    gt: [[0,1,0,0,0,0,0,0,0,0,2,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0]]
+    ent_idx: [0]
+    architecture: 
+      type: "Selective-MLP"
+      layer_size: 32
+      feature_names: ["type_screw","feat_pose_x", "feat_pose_y", "feat_is_fastened", "feat_is_held"]
+      initializer: "xavier"
+    optimizer:
+      type: "AdamW"
+      kwargs:
+        lr: 0.001
+    lr_scheduler:
+      type: "StepLR"
+      kwargs:
+        step_size: 70
+        gamma: 0.1
+    batch_vect_num: 12
+    batch_size: 32
+    epochs: 30
+    gumbel_temp: 0.66
+    val_freq: 5
+    quick_skip:
+      5: 0.1
+    num_iter: 5
+    matrix_vec_try: 100
+    search_tree_max_level: 1
+    guidance_thresh: 0.05
+    loss_thresh: 0.005
+    skip_train: False
+
+  - name: "neural_u_p3"
+    types: ["screwdriver"]
+    gt: [[0,0,1,0,0,0,0,2,0,0,0,0,0,0,0,0]]
+    ent_idx: [0]
+    architecture: 
+      type: "Selective-MLP"
+      layer_size: 32
+      feature_names: ["type_screwdriver","feat_pose_x", "feat_pose_y", "feat_size", "feat_is_held"]
+      initializer: "xavier"
+    optimizer:
+      type: "AdamW"
+      kwargs:
+        lr: 0.001
+    lr_scheduler:
+      type: "StepLR"
+      kwargs:
+        step_size: 70
+        gamma: 0.1
+    batch_vect_num: 12
+    batch_size: 32
+    epochs: 30
+    gumbel_temp: 0.66
+    val_freq: 5
+    quick_skip:
+      5: 0.1
+    num_iter: 5
+    matrix_vec_try: 100
+    search_tree_max_level: 1
+    guidance_thresh: 0.05
+    loss_thresh: 0.005
+    skip_train: False
+
+
+  - name: "neural_u_p4"
+    types: ["nail"]
+    gt: [[0,0,0,1,0,0,0,0,0,0,0,2,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0]]
+    ent_idx: [0]
+    architecture:
+      type: "MLP"
+      layer_size: 32
+      initializer: "xavier"
+    optimizer:
+      type: "AdamW"
+      kwargs:
+        lr: 0.001
+    lr_scheduler:
+      type: "StepLR"
+      kwargs:
+        step_size: 70
+        gamma: 0.1
+    batch_vect_num: 12
+    ucb_kappa: 0.2
+    batch_size: 512
+    epochs: 100
+    gumbel_temp: 0.66
+    val_freq: 10
+    num_iter: 5
+    matrix_vec_try: 100
+    search_tree_max_level: 1
+    guidance_thresh: 0.05
+    loss_thresh: 0.005
+    skip_train: False
+  
+  - name: "neural_u_p5"
+    types: ["hammer"]
+    gt: [[0,0,0,0,1,0,0,0,2,0,0,0,0,0,0,0]]
+    ent_idx: [0]
+    architecture:
+      type: "MLP"
+      layer_size: 32
+      initializer: "xavier"
+    optimizer:
+      type: "AdamW"
+      kwargs:
+        lr: 0.001
+    lr_scheduler:
+      type: "StepLR"
+      kwargs:
+        step_size: 70
+        gamma: 0.1
+    batch_vect_num: 12
+    ucb_kappa: 0.2
+    batch_size: 512
+    epochs: 100
+    gumbel_temp: 0.66
+    val_freq: 10
+    num_iter: 5
+    matrix_vec_try: 100
+    search_tree_max_level: 1
+    guidance_thresh: 0.05
+    loss_thresh: 0.005
+    skip_train: False
+
+  - name: "neural_u_p6"
+    types: ["bolt"]
+    gt: [[0,0,0,0,0,1,0,0,0,0,0,0,2,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1]]
+    ent_idx: [0]
+    architecture:
+      type: "MLP"
+      layer_size: 32
+      initializer: "xavier"
+    optimizer:
+      type: "AdamW"
+      kwargs:
+        lr: 0.001
+    lr_scheduler:
+      type: "StepLR"
+      kwargs:
+        step_size: 70
+        gamma: 0.1
+    batch_vect_num: 12
+    ucb_kappa: 0.2
+    batch_size: 512
+    epochs: 100
+    gumbel_temp: 0.66
+    val_freq: 10
+    num_iter: 5
+    matrix_vec_try: 100
+    search_tree_max_level: 1
+    guidance_thresh: 0.05
+    loss_thresh: 0.005
+    skip_train: False
+  
+  - name: "neural_u_p7"
+    types: ["wrench"]
+    gt: [[0,0,0,0,0,0,1,0,0,2,0,0,0,0,0,0]]
+    ent_idx: [0]
+    architecture:
+      type: "MLP"
+      layer_size: 32
+      initializer: "xavier"
+    optimizer:
+      type: "AdamW"
+      kwargs:
+        lr: 0.001
+    lr_scheduler:
+      type: "StepLR"
+      kwargs:
+        step_size: 70
+        gamma: 0.1
+    batch_vect_num: 12
+    ucb_kappa: 0.2
+    batch_size: 512
+    epochs: 100
+    gumbel_temp: 0.66
+    val_freq: 10
+    num_iter: 5
+    matrix_vec_try: 100
+    search_tree_max_level: 1
+    guidance_thresh: 0.05
+    loss_thresh: 0.005
+    skip_train: False
+
+
+  - name: "neural_b_p8"
+    types: ["screwdriver", "screw"] 
+    gt: [[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+         [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]]    
+    ent_idx: [0, 0]
+    architecture:
+      type: "Selective-DisPointNet"     
+      pointnet_feat_lst: [64, 128, 256] 
+      initializer: "xavier"
+    optimizer:
+      type: "AdamW"
+      kwargs: { lr: 0.001 }
+    lr_scheduler:
+      type: "StepLR"
+      kwargs: { step_size: 70, gamma: 0.1 }
+    batch_vect_num: 4
+    ucb_kappa: 0.3
+    batch_size: 16
+    epochs: 20
+    gumbel_temp: 0.66
+    val_freq: 10
+    num_iter: 70
+    matrix_vec_try: 100
+    search_tree_max_level: 1
+    guidance_thresh: 0.005
+    loss_thresh: 0.005
+    skip_train: False
+
+  - name: "neural_b_p9"
+    types: ["screw", "screwdriver"]
+    gt: [[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+         [2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]]         
+    ent_idx: [0, 0]
+    architecture:
+      type: "Selective-DisPointNet"
+      pointnet_feat_lst: [64, 128, 256]
+      initializer: "xavier"
+    optimizer:
+      type: "AdamW"
+      kwargs: { lr: 0.001 }
+    lr_scheduler:
+      type: "StepLR"
+      kwargs: { step_size: 70, gamma: 0.1 }
+    batch_vect_num: 4
+    quick_skip:
+      10: 0.1
+    ucb_kappa: 0.3
+    batch_size: 16
+    epochs: 20
+    gumbel_temp: 0.66
+    val_freq: 10
+    num_iter: 70
+    matrix_vec_try: 100
+    search_tree_max_level: 1
+    guidance_thresh: 0.005
+    loss_thresh: 0.005
+    skip_train: False
+
+  
+  - name: "neural_b_p10"
+    types: ["nail", "contraption"]
+    gt: [[0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0]]
+    ent_idx: [0, 0]
+    architecture:
+      type: "MLP"
+      layer_size: 128
+      initializer: "xavier"
+    optimizer:
+      type: "AdamW"
+      kwargs:
+        lr: 0.001
+    lr_scheduler:
+      type: "StepLR"
+      kwargs:
+        step_size: 70
+        gamma: 0.1
+    batch_vect_num: 4
+    ucb_kappa: 0.3
+    batch_size: 512
+    epochs: 200
+    gumbel_temp: 0.66
+    val_freq: 10
+    num_iter: 70
+    matrix_vec_try: 100
+    search_tree_max_level: 1
+    guidance_thresh: 0.005 
+    loss_thresh: 0.005
+    skip_train: False
+  
+  - name: "neural_b_p11"
+    types: ["contraption", "nail"]
+    gt: [[0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0]]
+    ent_idx: [0, 0]
+    architecture:
+      type: "MLP"
+      layer_size: 128
+      initializer: "xavier"
+    optimizer:
+      type: "AdamW"
+      kwargs:
+        lr: 0.001
+    lr_scheduler:
+      type: "StepLR"
+      kwargs:
+        step_size: 70
+        gamma: 0.1
+    batch_vect_num: 4
+    ucb_kappa: 0.3
+    batch_size: 512
+    epochs: 200
+    gumbel_temp: 0.66
+    val_freq: 10
+    num_iter: 70
+    matrix_vec_try: 100
+    search_tree_max_level: 1
+    guidance_thresh: 0.005 
+    loss_thresh: 0.005
+    skip_train: False
+  
+  - name: "neural_b_p12"
+    types: ["screw", "contraption"]
+    gt: [[0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0]]
+    ent_idx: [0, 0]
+    architecture:
+      type: "MLP"
+      layer_size: 128
+      initializer: "xavier"
+    optimizer:
+      type: "AdamW"
+      kwargs:
+        lr: 0.001
+    lr_scheduler:
+      type: "StepLR"
+      kwargs:
+        step_size: 70
+        gamma: 0.1
+    batch_vect_num: 4
+    ucb_kappa: 0.3
+    batch_size: 512
+    epochs: 200
+    gumbel_temp: 0.66
+    val_freq: 10
+    num_iter: 70
+    matrix_vec_try: 100
+    search_tree_max_level: 1
+    guidance_thresh: 0.005 
+    loss_thresh: 0.005
+    skip_train: False
+
+  - name: "neural_b_p13"
+    types: ["contraption", "screw"]
+    gt: [[0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0]]
+    ent_idx: [0, 0]
+    architecture:
+      type: "MLP"
+      layer_size: 128
+      initializer: "xavier"
+    optimizer:
+      type: "AdamW"
+      kwargs:
+        lr: 0.001
+    lr_scheduler:
+      type: "StepLR"
+      kwargs:
+        step_size: 70
+        gamma: 0.1
+    batch_vect_num: 4
+    ucb_kappa: 0.3
+    batch_size: 512
+    epochs: 200
+    gumbel_temp: 0.66
+    val_freq: 10
+    num_iter: 70
+    matrix_vec_try: 100
+    search_tree_max_level: 1
+    guidance_thresh: 0.005 
+    loss_thresh: 0.005
+    skip_train: False
+  
+  - name: "neural_b_p14"
+    types: ["bolt", "contraption"]
+    gt: [[0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0]]
+    ent_idx: [0, 0]
+    architecture:
+      type: "MLP"
+      layer_size: 128
+      initializer: "xavier"
+    optimizer:
+      type: "AdamW"
+      kwargs:
+        lr: 0.001
+    lr_scheduler:
+      type: "StepLR"
+      kwargs:
+        step_size: 70
+        gamma: 0.1
+    batch_vect_num: 4
+    ucb_kappa: 0.3
+    batch_size: 512
+    epochs: 200
+    gumbel_temp: 0.66
+    val_freq: 10
+    num_iter: 70
+    matrix_vec_try: 100
+    search_tree_max_level: 1
+    guidance_thresh: 0.005 
+    loss_thresh: 0.005
+    skip_train: False
+  
+  - name: "neural_b_p15"
+    types: ["contraption", "bolt"]
+    gt: [[0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0]]
+    ent_idx: [0, 0]
+    architecture:
+      type: "MLP"
+      layer_size: 128
+      initializer: "xavier"
+    optimizer:
+      type: "AdamW"
+      kwargs:
+        lr: 0.001
+    lr_scheduler:
+      type: "StepLR"
+      kwargs:
+        step_size: 70
+        gamma: 0.1
+    batch_vect_num: 4
+    ucb_kappa: 0.3
+    batch_size: 512
+    epochs: 200
+    gumbel_temp: 0.66
+    val_freq: 10
+    num_iter: 70
+    matrix_vec_try: 100
+    search_tree_max_level: 1
+    guidance_thresh: 0.005 
+    loss_thresh: 0.005
+    skip_train: False
+
+  

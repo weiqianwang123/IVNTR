@@ -40,7 +40,7 @@ class ToolsPCDGroundTruthOptionFactory(GroundTruthOptionFactory):
             # params: []
             "AdjustScrewdriverShape",
             cls._create_adjust_screwdriver_shape_policy(),
-            types=[robot_type, screwdriver_type])
+            types=[robot_type, screwdriver_type,screw_type])
         PickScrew = utils.SingletonParameterizedOption(
             # variables: [robot, screw to pick]
             # params: []
@@ -82,13 +82,84 @@ class ToolsPCDGroundTruthOptionFactory(GroundTruthOptionFactory):
             "PickWrench",
             cls._create_pick_policy(),
             types=[robot_type, wrench_type])
+        
 
-        Place = utils.SingletonParameterizedOption(
+
+        # PlaceScrewdriverBack
+        PlaceScrewdriverBack =  utils.SingletonParameterizedOption(
             # variables: [robot]
             # params: [absolute x, absolute y]
-            "Place",
+            "PlaceScrewdriverBack",
             policy=cls._create_place_policy(),
-            types=[robot_type],
+            types=[robot_type, screwdriver_type],
+            params_space=Box(
+                np.array([ToolsPCDEnv.table_lx, ToolsPCDEnv.table_ly],
+                         dtype=np.float32),
+                np.array([ToolsPCDEnv.table_ux, ToolsPCDEnv.table_uy],
+                         dtype=np.float32)),
+        )
+        # PlaceHammerBack
+        PlaceHammerBack = utils.SingletonParameterizedOption(
+            # variables: [robot]
+            # params: [absolute x, absolute y]
+            "PlaceHammerBack",
+            policy=cls._create_place_policy(),
+            types=[robot_type, hammer_type],
+            params_space=Box(
+                np.array([ToolsPCDEnv.table_lx, ToolsPCDEnv.table_ly],
+                         dtype=np.float32),
+                np.array([ToolsPCDEnv.table_ux, ToolsPCDEnv.table_uy],
+                         dtype=np.float32)),
+        )
+
+
+        # PlaceWrenchBack
+        PlaceWrenchBack = utils.SingletonParameterizedOption(
+            # variables: [robot]
+            # params: [absolute x, absolute y]
+            "PlaceWrenchBack",
+            policy=cls._create_place_policy(),
+            types=[robot_type, wrench_type],
+            params_space=Box(
+                np.array([ToolsPCDEnv.table_lx, ToolsPCDEnv.table_ly],
+                         dtype=np.float32),
+                np.array([ToolsPCDEnv.table_ux, ToolsPCDEnv.table_uy],
+                         dtype=np.float32)),
+        )
+
+        # PlaceScrewOnContraption
+        PlaceScrewOnContraption = utils.SingletonParameterizedOption(
+            # variables: [robot]
+            # params: [absolute x, absolute y]
+            "PlaceScrewOnContraption",
+            policy=cls._create_place_policy(),
+            types=[robot_type, screw_type, contraption_type],
+            params_space=Box(
+                np.array([ToolsPCDEnv.table_lx, ToolsPCDEnv.table_ly],
+                         dtype=np.float32),
+                np.array([ToolsPCDEnv.table_ux, ToolsPCDEnv.table_uy],
+                         dtype=np.float32)),
+        )
+        # PlaceNailOnContraption
+        PlaceNailOnContraption = utils.SingletonParameterizedOption(
+            # variables: [robot]
+            # params: [absolute x, absolute y]
+            "PlaceNailOnContraption",
+            policy=cls._create_place_policy(),
+            types=[robot_type, nail_type, contraption_type],
+            params_space=Box(
+                np.array([ToolsPCDEnv.table_lx, ToolsPCDEnv.table_ly],
+                         dtype=np.float32),
+                np.array([ToolsPCDEnv.table_ux, ToolsPCDEnv.table_uy],
+                         dtype=np.float32)),
+        )
+        # PlaceBoltOnContraption
+        PlaceBoltOnContraption = utils.SingletonParameterizedOption(
+            # variables: [robot]
+            # params: [absolute x, absolute y]
+            "PlaceBoltOnContraption",
+            policy=cls._create_place_policy(),
+            types=[robot_type, bolt_type, contraption_type],
             params_space=Box(
                 np.array([ToolsPCDEnv.table_lx, ToolsPCDEnv.table_ly],
                          dtype=np.float32),
@@ -126,7 +197,8 @@ class ToolsPCDGroundTruthOptionFactory(GroundTruthOptionFactory):
 
         return {
             AdjustScrewdriverShape,PickScrew, PickScrewdriver, PickNail, PickHammer, PickBolt,
-            PickWrench, Place, FastenScrewWithScrewdriver,
+            PickWrench, PlaceScrewdriverBack,PlaceHammerBack,PlaceWrenchBack,PlaceScrewOnContraption,
+            PlaceNailOnContraption,PlaceBoltOnContraption,FastenScrewWithScrewdriver,
             FastenNailWithHammer, FastenBoltWithWrench
         }
 

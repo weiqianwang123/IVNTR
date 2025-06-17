@@ -783,7 +783,7 @@ class GlobalSettings:
     # neupi_do_normalization = False # satelites do not need normalization
     neupi_entropy_w = 0.5
     neupi_loss_w = 0.5
-    neupi_given_pred_effect_thresh = 0.8 # this is useful for noisy domains such as ViewPlanHard
+    neupi_given_pred_effect_thresh = 0.7 # this is useful for noisy domains such as ViewPlanHard
     neupi_entropy_entry_min = 0.0
     neupi_entropy_entry_max = 1.0
     neupi_gt_ae_matrix = False
