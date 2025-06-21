@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "predicates": [
+    {
+      "name": "camerareadingtaken",
+      "arity": 2,
+      "types": ["satellite", "object"],
+      "role": "goal",
+      "effect_map": {
+        "UseCamera": "add"
+      }
+    },
+    {
+      "name": "infraredreadingtaken",
+      "arity": 2,
+      "types": ["satellite", "object"],
+      "role": "goal",
+      "effect_map": {
+        "UseInfraRed": "add"
+      }
+    },
+    {
+      "name": "geigerreadingtaken",
+      "arity": 2,
+      "types": ["satellite", "object"],
+      "role": "goal",
+      "effect_map": {
+        "UseGeiger": "add"
+      }
+    },
+
+    {
+      "name": "calibrationtarget",
+      "arity": 2,
+      "types": ["satellite", "object"],
+      "role": "precondition",
+      "precond_of": ["Calibrate"]
+    },
+    {
+      "name": "shootschemx",
+      "arity": 1,
+      "types": ["satellite"],
+      "role": "precondition",
+      "precond_of": ["ShootChemX"]
+    },
+    {
+      "name": "shootschemy",
+      "arity": 1,
+      "types": ["satellite"],
+      "role": "precondition",
+      "precond_of": ["ShootChemY"]
+    },
+    {
+      "name": "hascamera",
+      "arity": 1,
+      "types": ["satellite"],
+      "role": "precondition",
+      "precond_of": ["TakeCameraReading"]
+    },
+    {
+      "name": "hasinfrared",
+      "arity": 1,
+      "types": ["satellite"],
+      "role": "precondition",
+      "precond_of": ["TakeInfraredReading"]
+    },
+    {
+      "name": "hasgeiger",
+      "arity": 1,
+      "types": ["satellite"],
+      "role": "precondition",
+      "precond_of": ["TakeGeigerReading"]
+    }
+  ]
+}

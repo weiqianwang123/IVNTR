@@ -4,12 +4,12 @@ import re
 import time
 import logging
 from typing import Dict, List, Set, Tuple, Union, Optional
-
+import json
 from dotenv import load_dotenv
 import openai
 import torch
 import random
-
+from collections import OrderedDict
 from predicators.structs import ParameterizedOption, Predicate, Type  # noqa: F401
 from predicators.llm.llm_for_effect_new import constraints_to_vector
 
@@ -22,15 +22,32 @@ _PDDL_HEADER = """\
     {predicate_lines}
 )
 """
+def load_initial_predicates(json_path: str):
+    with open(json_path, "r") as f:
+        spec = json.load(f)
+    preds, goal_info, precond_info = [], {}, {}
+    for p in spec["predicates"]:
+        types = [Type(t, set()) for t in p["types"]]   # 用你的 Type 类
+        pred_obj = Predicate(p["name"], types,set())
+        preds.append(pred_obj)
+        if p["role"] == "goal":
+            goal_info[p["name"]] = p["effect_map"]   # {action: "add"/"del"}
+        else:
+            precond_info[p["name"]] = set(p["precond_of"])
+    return preds, goal_info, precond_info
+
 
 def _pddl_name(x: str) -> str:
     """Lower-case and strip spaces → valid PDDL symbol."""
     return re.sub(r'[^a-z0-9_]+', '_', x.lower())
 
 def build_pddl_skeleton(
-    target_preds: Set[Predicate],
     options: List[ParameterizedOption],
+    goal_info: Dict[str,Dict], 
+    precond_info: Dict[str,Set],
     other_preds: Set[Predicate] | None = None,
+    domain_desc: Optional[str] = None,
+   
 ) -> str:
     """Return a string with *empty* action stubs ready for the LLM to fill."""
     # 1) types ────────────────────────────────────────────────────────────
@@ -38,34 +55,55 @@ def build_pddl_skeleton(
     type_line = " ".join(sorted(all_types))
 
     # 2) predicate declarations (target + others)──────────────────────────
-    preds = target_preds | (other_preds or set())
+    preds = (other_preds or set())
     pred_lines = []
     for p in sorted(preds, key=lambda p: p.name):
         # Example:   (holding ?o - object)
         ty_sig = " ".join(f"?{i} - {_pddl_name(t.name)}"
-                        for i, t in enumerate(p.types))
-        prefix = "; <TARGET> " if p in target_preds else ""
-        pred_lines.append(f"    {prefix}({_pddl_name(p.name)} {ty_sig})")
+                          for i, t in enumerate(p.types))
+
+        pred_lines.append(f"    ({_pddl_name(p.name)} {ty_sig})")
 
     # 3) bare action stubs ────────────────────────────────────────────────
     action_blocks = []
     for opt in options:
-        params = " ".join(f"?{i} - {_pddl_name(t.name)}"
-                        for i, t in enumerate(opt.types))
+        params = ...
+        # 填入已知 precondition / effect
+        preconds = []
+        effects  = []
+        # ① precondition-only
+        for pname, act_set in precond_info.items():
+            if opt.name in act_set:
+                preconds.append(f"({_pddl_name(pname)} {' '.join(f'?{i}' for i in range(len(opt.types)))})")
+        # ② goal predicate的 effect
+        for pname, eff_map in goal_info.items():
+            if opt.name in eff_map:
+                kind = eff_map[opt.name]
+                atom = f"({_pddl_name(pname)} {' '.join(f'?{i}' for i in range(len(opt.types)))})"
+                effects.append(atom if kind == "add" else f"(not {atom})")
+
         action_blocks.append(f"""\
         (:action {_pddl_name(opt.name)}
             :parameters ({params})
-            ; *** The LLM must fill these two sections ***
-            :precondition (and )
-            :effect       (and )
+            :precondition (and {' '.join(preconds)})
+            :effect       (and {' '.join(effects)})
         )""")
 
     # 4) glue everything together ─────────────────────────────────────────
-    domain = _PDDL_HEADER.format(
-        types=type_line,
-        predicate_lines="\n    ".join(pred_lines)
-    ) + "\n".join(action_blocks) + "\n)"
+    desc_comment = f"; Domain Description: {domain_desc}\n" if domain_desc else ""
+    joined_preds = "\n    ".join(pred_lines)
+    domain = (
+    "(define (domain generated)\n"
+    f"{desc_comment}(:requirements :strips :typing)\n"
+    f"(:types {type_line})\n"
+    "(:predicates\n"
+    f"    {joined_preds}\n"
+    ")\n"
+    + "\n".join(action_blocks) + "\n)"
+    )
+
     return domain
+
 
 class PDDLEffectVectorGenerator():
     """Same public API as your original, but works by PDDL completion."""
@@ -73,18 +111,11 @@ class PDDLEffectVectorGenerator():
     You are a PDDL expert.  The user will give you a *valid but incomplete* PDDL
     domain.  Your task:
 
-    1. **Do not add/remove actions, parameters, or predicates** except to fill the
-    missing `:precondition` and `:effect` fields.
-    2. Keep predictions *simple & plausible* – use only predicates already listed.
-    3. For each action, decide whether the <TARGET> predicate
-    • is **added**  (include it positively in :effect)
-    • is **deleted** (wrap it in (not ...) inside :effect)
-    • or untouched  (omit from :effect)
-
-    Return the *entire* completed domain, nothing else.
-
-    Even if you have guessed the name of predicate for target pred which is initially unknown,
-    you need to keep the same name "unknown" in your completed pddl.
+    1.The predicate given is not enough for this domain, you need to add more predicates.
+    2,Add those new predicates to the precondition and effect of the actions to make the domain complete.
+    3,Do not add/remove actions.
+    4,Return the complete PDDL only, no other text.
+    
     """
 
     # ───────────────────────────── constructor ────────────────────────────
@@ -97,6 +128,7 @@ class PDDLEffectVectorGenerator():
         domain_desc: Optional[str] = None,
         llm_cfg: Optional[Dict] = None,
         constraint_matrix: Optional[List[List[int]]] = None,
+        demo_prompt: Optional[str] = None,
         history_cutoff: int = 25,
 
     ) -> None:
@@ -109,7 +141,7 @@ class PDDLEffectVectorGenerator():
         self._other_preds = other_predicates or set()
         self._domain_desc = domain_desc
         self._constraint = constraint_matrix or [[0, 1, 2] for _ in range(self._orig_len)]
-
+        self._demo_prompt = demo_prompt or ""
      
 
         # ---------- env + LLM cfg ----------
@@ -129,10 +161,17 @@ class PDDLEffectVectorGenerator():
 
       
         # prompts
-        self.system_prompt = self.COMPLETION_GUIDE
+        self.system_prompt = self.COMPLETION_GUIDE+self._demo_prompt
+        init_preds, goal_info, precond_info = load_initial_predicates("/home/qianwei/IVNTR/predicators/config/satellites/pddl.json")
+
         self._domain_skeleton = build_pddl_skeleton(
-            self.target_preds, self._orig_options, self._other_preds
+                options=self._orig_options,
+                other_preds=set(init_preds),
+                domain_desc=self._domain_desc,
+                goal_info=goal_info,
+                precond_info=precond_info,
         )
+        self._initial_pred_set = {p.name for p in init_preds}
         print(self.system_prompt)
         print(self._domain_skeleton)
 
@@ -157,6 +196,10 @@ class PDDLEffectVectorGenerator():
         """Keep querying until the filled PDDL parses, or the retry budget runs out."""
         prompt = self._domain_skeleton
         retries = self.cfg.get("retry_attempts", 5)
+        tgt2sig = {
+        _pddl_name(tp.name): [_pddl_name(t.name) for t in tp.types]
+        for tp in self.target_preds
+        }
         for attempt in range(1, retries + 1):
             try:
                 filled = self._call_llm(prompt)
@@ -166,9 +209,32 @@ class PDDLEffectVectorGenerator():
                 time.sleep(1.0)
                 continue
 
-            vec = self._extract_vector_from_pddl(filled)
-            if vec is not None:
-                return vec   # ✅ success
+            mat, new_preds, pred2types = self._extract_vector_from_pddl(filled)
+            if mat is not None:
+                # build mapping: target_pred → list[row_tensor]
+                result: "OrderedDict[Predicate, List[torch.Tensor]]" = OrderedDict()
+                for tp in self.target_preds:
+                    result[tp] = []   # init even if empty
+
+                # row index lookup
+                for r, p_name in enumerate(new_preds):
+                    sig = pred2types.get(p_name, [])
+                    for tp in self.target_preds:
+                        if sig == tgt2sig[_pddl_name(tp.name)]:
+                            result[tp].append(mat[r])
+
+                # logging
+                logging.info("✓ Parsed PDDL on attempt %d", attempt)
+                act_names = [_pddl_name(o.name) for o in self._orig_options]
+                for tp, vecs in result.items():
+                    if not vecs:
+                        logging.info("  • %s → []", tp.name)
+                    else:
+                        for k, v in enumerate(vecs):
+                            logging.info("  • %s (match %d) → %s  (actions=%s)",
+                                        tp.name, k, v.tolist(), act_names)
+
+                return result    
 
             # ── if we reach here, parse failed → build a nudge and retry ──
             logging.warning("Could not parse LLM PDDL output on attempt %d.", attempt)
@@ -186,37 +252,70 @@ class PDDLEffectVectorGenerator():
 
 
     # ------------ PDDL → vector -----------------------------------------
-    # ─── 3.  _extract_vector_from_pddl  →  one vector per predicate ──────
-    def _extract_vector_from_pddl(self, txt: str) -> Optional[torch.Tensor]:
-        """Return a matrix  shape=(|target_preds|, |actions|)
-           rows ordered like  list(self.target_preds)."""
-        acts = {_pddl_name(o.name): i for i, o in enumerate(self._orig_options)}
+  
 
-        # ► initialise an effect-matrix full of zeros
-        pred_list = list(self.target_preds)                 # fixed order
-        mat = torch.zeros((len(pred_list), len(self._orig_options)),
-                          dtype=torch.long)
+    def _extract_vector_from_pddl(
+            self,
+            txt: str
+    ) -> Tuple[Optional[torch.Tensor], List[str], Dict[str, List[str]]]:
+        """
+        Return (effect_matrix, predicate_order, pred2types).
 
-        # capture each action block once
-        pat = re.compile(
+        * effect_matrix.shape == (|new preds|, |actions|)
+        * predicate_order  == list of PDDL-safe predicate names
+        * pred2types[name] == list[str] type signature (also PDDL-safe)
+
+        If parse fails or matrix is all-zero, returns (None, [], {}).
+        """
+        # ---------- ① parse (:predicates ...) ----------
+        pred_block = re.search(r"\(:predicates(.*?)\)\s*\)", txt, re.S | re.I)
+        if not pred_block:
+            return None, [], {}
+
+        pred2types: Dict[str, List[str]] = {}
+        for line in pred_block.group(1).splitlines():
+            s = line.strip()
+            if not s or s.startswith(";"):
+                continue
+            # allow zero-arity predicates
+            m = re.match(r"\(\s*([a-zA-Z0-9_]+)(?:\s+(.*?))?\)", s)
+            if not m:
+                continue
+            name, rest = m.groups()
+            rest = rest or ""
+            types = re.findall(r"-\s*([a-zA-Z0-9_]+)", rest)
+            pred2types[_pddl_name(name)] = [_pddl_name(t) for t in types]
+
+        # ---------- ② drop initial predicates ----------
+        new_preds = [p for p in pred2types if p not in self._initial_pred_set]
+        if not new_preds:
+            return None, [], {}
+
+        # ---------- ③ build |new| × |actions| matrix ----------
+        mat = torch.zeros((len(new_preds), len(self._orig_options)), dtype=torch.long)
+        act2idx = {_pddl_name(o.name): i for i, o in enumerate(self._orig_options)}
+
+        act_pat = re.compile(
             r"\(:action\s+([^\s]+).*?:effect\s*\((?:and\s*)?(.*?)\)\s*\)",
             re.S | re.I,
         )
-        for name, eff in pat.findall(txt):
-            if name not in acts:
+        for act_name, eff in act_pat.findall(txt):
+            col = act2idx.get(_pddl_name(act_name))
+            if col is None:
                 continue
-            act_idx = acts[name]
-
-            for r, pred in enumerate(pred_list):
-                sym = _pddl_name(pred.name)
-
+            for row, p in enumerate(new_preds):
+                sym = re.escape(p)
                 if re.search(rf"\(\s*{sym}\b", eff):
-                    mat[r, act_idx] = 1      # add
+                    mat[row, col] = 1
                 if re.search(rf"\(not\s+\(\s*{sym}\b", eff):
-                    mat[r, act_idx] = 2      # delete (overwrite add)
+                    mat[row, col] = 2
 
-        # sanity check: at least one non-zero somewhere
-        return mat if (mat != 0).any() else None
+        if not (mat != 0).any():
+            return None, [], {}
+
+        return mat, new_preds, pred2types
+
+
 
 
 

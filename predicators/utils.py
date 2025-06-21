@@ -4128,9 +4128,9 @@ def add_text_to_draw_img(
 
 def get_important_cfg(cfg, dict):
     important_keys = [
-        "neupi_non_effect_predicates",
-        "neupi_ae_matrix_channel",
-        "neupi_gt_ae_matrix",
+        # "neupi_non_effect_predicates",
+        # "neupi_ae_matrix_channel",
+        # "neupi_gt_ae_matrix",
         "name",
         "types",
         "architecture",

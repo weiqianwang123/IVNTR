@@ -69,7 +69,7 @@ def train_val_model_in_parallel(curr_pred, ent_idx, pred_save_path, ae_vector, i
     logging.info(f"Predicat {curr_pred.arity} Iteration {iteration} | Starting process {n}")
     if wandb_run_name:
         logging.info(f"Starting W&B run. This makes training slower due to logging.")
-        os.environ["WANDB_API_KEY"] = "f510977768bfee8889d74a65884aeec5f45a578f"
+        os.environ["WANDB_API_KEY"] = "b5ed765204c6a2c9da5c35cf6155b5befa2baf9f"
         wandb.init(project="NeuPI", 
                 config=utils.get_important_cfg(CFG, pred_config))
         wandb.run.name = wandb_run_name + "_pred_" + pred_config['name'] + "_init_" + str(n)
@@ -146,7 +146,7 @@ def train_val_model_single(curr_pred, ent_idx, pred_save_path, ae_vector, iterat
     logging.info(f"Predicat {curr_pred.arity} Iteration {iteration} | Starting process {n}")
     if wandb_run_name:
         logging.info(f"Starting W&B run. This makes training slower due to logging.")
-        os.environ["WANDB_API_KEY"] = "f510977768bfee8889d74a65884aeec5f45a578f"
+        os.environ["WANDB_API_KEY"] = "b5ed765204c6a2c9da5c35cf6155b5befa2baf9f"
         wandb.init(project="NeuPI", 
                 config=utils.get_important_cfg(CFG, pred_config))
         wandb.run.name = wandb_run_name + "_pred_" + pred_config['name'] + "_init_" + str(n)

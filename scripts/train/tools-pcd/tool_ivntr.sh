@@ -27,6 +27,7 @@ do
         --bilevel_plan_without_sim False \
         --sesame_max_samples_per_step 30 \
         --timeout 5 \
+        --wandb_run_name "tools-pcd-ivntr-$seed" \
         --approach_dir "saved_approaches/demo/tools-pcd/ivntr_$seed" \
         --neupi_save_path "saved_approaches/demo/tools-pcd/ivntr_$seed" \
         --log_file /home/qianwei/IVNTR/logs/tools-pcd/ivntr_ood_$seed.log; then

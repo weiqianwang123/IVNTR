@@ -1,0 +1,622 @@
+[
+  {
+    "states": [
+      "State(data={obj0:object: array([0.        , 0.85740428, 0.03358558, 0.        , 0.        ]), obj1:object: array([1.        , 0.29971189, 0.42268722, 0.        , 0.        ]), sat0:satellite: array([ 0.26978671,  0.04097352, -3.03774646,  0.81327024,  1.        ,\n        0.        , -1.        ,  1.        ,  1.        ]), sat1:satellite: array([ 0.72949656,  0.54362499,  2.73364066,  0.81585355,  1.        ,\n        0.        , -1.        ,  1.        ,  0.        ])}, simulator_state=None)",
+      "State(data={obj0:object: array([0.        , 0.85740428, 0.03358558, 0.        , 0.        ]), obj1:object: array([1.        , 0.29971189, 0.42268722, 0.        , 0.        ]), sat0:satellite: array([ 0.26978671,  0.04097352, -3.03774646,  0.81327024,  1.        ,\n        0.        , -1.        ,  1.        ,  1.        ]), sat1:satellite: array([ 0.20406647,  0.45345652, -0.3112458 ,  0.81585355,  1.        ,\n        0.        , -1.        ,  1.        ,  0.        ])}, simulator_state=None)",
+      "State(data={obj0:object: array([0.        , 0.85740428, 0.03358558, 0.        , 0.        ]), obj1:object: array([1.        , 0.29971189, 0.42268722, 0.        , 0.        ]), sat0:satellite: array([ 0.26978671,  0.04097352, -3.03774646,  0.81327024,  1.        ,\n        0.        , -1.        ,  1.        ,  1.        ]), sat1:satellite: array([ 0.20406647,  0.45345652, -0.3112458 ,  0.81585355,  1.        ,\n        1.        , -1.        ,  1.        ,  0.        ])}, simulator_state=None)",
+      "State(data={obj0:object: array([0.        , 0.85740428, 0.03358558, 0.        , 0.        ]), obj1:object: array([1.        , 0.29971189, 0.42268722, 0.        , 0.        ]), sat0:satellite: array([ 0.26978671,  0.04097352, -3.03774646,  0.81327024,  1.        ,\n        0.        , -1.        ,  1.        ,  1.        ]), sat1:satellite: array([ 0.14415962,  0.94864947, -1.28324509,  0.81585355,  1.        ,\n        1.        , -1.        ,  1.        ,  0.        ])}, simulator_state=None)",
+      "State(data={obj0:object: array([0.        , 0.85740428, 0.03358558, 0.        , 0.        ]), obj1:object: array([1.        , 0.29971189, 0.42268722, 0.        , 0.        ]), sat0:satellite: array([ 0.26978671,  0.04097352, -3.03774646,  0.81327024,  1.        ,\n        0.        , -1.        ,  1.        ,  1.        ]), sat1:satellite: array([ 0.93935257,  0.        ,  2.75263357,  0.81585355,  1.        ,\n        1.        , -1.        ,  1.        ,  0.        ])}, simulator_state=None)",
+      "State(data={obj0:object: array([0.        , 0.85740428, 0.03358558, 0.        , 0.        ]), obj1:object: array([1.        , 0.29971189, 0.42268722, 0.        , 0.        ]), sat0:satellite: array([ 0.26978671,  0.04097352, -3.03774646,  0.81327024,  1.        ,\n        0.        , -1.        ,  1.        ,  1.        ]), sat1:satellite: array([0.93935257, 0.        , 2.75263357, 0.81585355, 1.        ,\n       1.        , 0.        , 1.        , 0.        ])}, simulator_state=None)",
+      "State(data={obj0:object: array([0.        , 0.85740428, 0.03358558, 0.        , 0.        ]), obj1:object: array([1.        , 0.29971189, 0.42268722, 0.        , 0.        ]), sat0:satellite: array([ 0.39490604,  0.36160108,  2.57107401,  0.81327024,  1.        ,\n        0.        , -1.        ,  1.        ,  1.        ]), sat1:satellite: array([0.93935257, 0.        , 2.75263357, 0.81585355, 1.        ,\n       1.        , 0.        , 1.        , 0.        ])}, simulator_state=None)",
+      "State(data={obj0:object: array([0.        , 0.85740428, 0.03358558, 0.        , 0.        ]), obj1:object: array([1.        , 0.29971189, 0.42268722, 0.        , 0.        ]), sat0:satellite: array([ 0.39490604,  0.36160108,  2.57107401,  0.81327024,  1.        ,\n        1.        , -1.        ,  1.        ,  1.        ]), sat1:satellite: array([0.93935257, 0.        , 2.75263357, 0.81585355, 1.        ,\n       1.        , 0.        , 1.        , 0.        ])}, simulator_state=None)",
+      "State(data={obj0:object: array([0.        , 0.85740428, 0.03358558, 0.        , 0.        ]), obj1:object: array([1.        , 0.29971189, 0.42268722, 0.        , 0.        ]), sat0:satellite: array([ 0.54959369,  0.02755911,  2.13470435,  0.81327024,  1.        ,\n        1.        , -1.        ,  1.        ,  1.        ]), sat1:satellite: array([0.93935257, 0.        , 2.75263357, 0.81585355, 1.        ,\n       1.        , 0.        , 1.        , 0.        ])}, simulator_state=None)",
+      "State(data={obj0:object: array([0.        , 0.85740428, 0.03358558, 0.        , 0.        ]), obj1:object: array([1.        , 0.29971189, 0.42268722, 0.        , 0.        ]), sat0:satellite: array([ 0.96439683,  0.05973005, -2.90193129,  0.81327024,  1.        ,\n        1.        , -1.        ,  1.        ,  1.        ]), sat1:satellite: array([0.93935257, 0.        , 2.75263357, 0.81585355, 1.        ,\n       1.        , 0.        , 1.        , 0.        ])}, simulator_state=None)",
+      "State(data={obj0:object: array([0.        , 0.85740428, 0.03358558, 0.        , 0.        ]), obj1:object: array([1.        , 0.29971189, 0.42268722, 0.        , 0.        ]), sat0:satellite: array([ 0.96439683,  0.05973005, -2.90193129,  0.81327024,  1.        ,\n        1.        ,  0.        ,  1.        ,  1.        ]), sat1:satellite: array([0.93935257, 0.        , 2.75263357, 0.81585355, 1.        ,\n       1.        , 0.        , 1.        , 0.        ])}, simulator_state=None)"
+    ],
+    "actions": [
+      {
+        "name": "SingletonParameterizedOption(name='MoveTo', types=[Type(name='satellite'), Type(name='object')])",
+        "objects": [
+          "sat1:satellite",
+          "obj1:object"
+        ]
+      },
+      {
+        "name": "SingletonParameterizedOption(name='Calibrate', types=[Type(name='satellite'), Type(name='object')])",
+        "objects": [
+          "sat1:satellite",
+          "obj1:object"
+        ]
+      },
+      {
+        "name": "SingletonParameterizedOption(name='MoveAway', types=[Type(name='satellite'), Type(name='object')])",
+        "objects": [
+          "sat1:satellite",
+          "obj1:object"
+        ]
+      },
+      {
+        "name": "SingletonParameterizedOption(name='MoveTo', types=[Type(name='satellite'), Type(name='object')])",
+        "objects": [
+          "sat1:satellite",
+          "obj0:object"
+        ]
+      },
+      {
+        "name": "SingletonParameterizedOption(name='UseGeiger', types=[Type(name='satellite'), Type(name='object')])",
+        "objects": [
+          "sat1:satellite",
+          "obj0:object"
+        ]
+      },
+      {
+        "name": "SingletonParameterizedOption(name='MoveTo', types=[Type(name='satellite'), Type(name='object')])",
+        "objects": [
+          "sat0:satellite",
+          "obj1:object"
+        ]
+      },
+      {
+        "name": "SingletonParameterizedOption(name='Calibrate', types=[Type(name='satellite'), Type(name='object')])",
+        "objects": [
+          "sat0:satellite",
+          "obj1:object"
+        ]
+      },
+      {
+        "name": "SingletonParameterizedOption(name='MoveAway', types=[Type(name='satellite'), Type(name='object')])",
+        "objects": [
+          "sat0:satellite",
+          "obj1:object"
+        ]
+      },
+      {
+        "name": "SingletonParameterizedOption(name='MoveTo', types=[Type(name='satellite'), Type(name='object')])",
+        "objects": [
+          "sat0:satellite",
+          "obj0:object"
+        ]
+      },
+      {
+        "name": "SingletonParameterizedOption(name='UseGeiger', types=[Type(name='satellite'), Type(name='object')])",
+        "objects": [
+          "sat0:satellite",
+          "obj0:object"
+        ]
+      }
+    ],
+    "atoms": [
+      [
+        "CalibrationTarget(sat1:satellite, obj1:object)",
+        "ShootsChemX(sat0:satellite)",
+        "CalibrationTarget(sat0:satellite, obj1:object)",
+        "ShootsChemX(sat1:satellite)",
+        "ShootsChemY(sat0:satellite)",
+        "HasGeiger(sat0:satellite)",
+        "HasGeiger(sat1:satellite)"
+      ],
+      [
+        "CalibrationTarget(sat1:satellite, obj1:object)",
+        "ShootsChemX(sat0:satellite)",
+        "CalibrationTarget(sat0:satellite, obj1:object)",
+        "ShootsChemX(sat1:satellite)",
+        "ShootsChemY(sat0:satellite)",
+        "HasGeiger(sat0:satellite)",
+        "HasGeiger(sat1:satellite)"
+      ],
+      [
+        "CalibrationTarget(sat1:satellite, obj1:object)",
+        "ShootsChemX(sat0:satellite)",
+        "CalibrationTarget(sat0:satellite, obj1:object)",
+        "ShootsChemX(sat1:satellite)",
+        "ShootsChemY(sat0:satellite)",
+        "HasGeiger(sat0:satellite)",
+        "HasGeiger(sat1:satellite)"
+      ],
+      [
+        "CalibrationTarget(sat1:satellite, obj1:object)",
+        "ShootsChemX(sat0:satellite)",
+        "CalibrationTarget(sat0:satellite, obj1:object)",
+        "ShootsChemX(sat1:satellite)",
+        "ShootsChemY(sat0:satellite)",
+        "HasGeiger(sat0:satellite)",
+        "HasGeiger(sat1:satellite)"
+      ],
+      [
+        "CalibrationTarget(sat1:satellite, obj1:object)",
+        "ShootsChemX(sat0:satellite)",
+        "CalibrationTarget(sat0:satellite, obj1:object)",
+        "ShootsChemX(sat1:satellite)",
+        "ShootsChemY(sat0:satellite)",
+        "HasGeiger(sat0:satellite)",
+        "HasGeiger(sat1:satellite)"
+      ],
+      [
+        "CalibrationTarget(sat1:satellite, obj1:object)",
+        "ShootsChemX(sat0:satellite)",
+        "CalibrationTarget(sat0:satellite, obj1:object)",
+        "GeigerReadingTaken(sat1:satellite, obj0:object)",
+        "ShootsChemX(sat1:satellite)",
+        "ShootsChemY(sat0:satellite)",
+        "HasGeiger(sat0:satellite)",
+        "HasGeiger(sat1:satellite)"
+      ],
+      [
+        "CalibrationTarget(sat1:satellite, obj1:object)",
+        "ShootsChemX(sat0:satellite)",
+        "CalibrationTarget(sat0:satellite, obj1:object)",
+        "GeigerReadingTaken(sat1:satellite, obj0:object)",
+        "ShootsChemX(sat1:satellite)",
+        "ShootsChemY(sat0:satellite)",
+        "HasGeiger(sat0:satellite)",
+        "HasGeiger(sat1:satellite)"
+      ],
+      [
+        "CalibrationTarget(sat1:satellite, obj1:object)",
+        "ShootsChemX(sat0:satellite)",
+        "CalibrationTarget(sat0:satellite, obj1:object)",
+        "GeigerReadingTaken(sat1:satellite, obj0:object)",
+        "ShootsChemX(sat1:satellite)",
+        "ShootsChemY(sat0:satellite)",
+        "HasGeiger(sat0:satellite)",
+        "HasGeiger(sat1:satellite)"
+      ],
+      [
+        "CalibrationTarget(sat1:satellite, obj1:object)",
+        "ShootsChemX(sat0:satellite)",
+        "CalibrationTarget(sat0:satellite, obj1:object)",
+        "GeigerReadingTaken(sat1:satellite, obj0:object)",
+        "ShootsChemX(sat1:satellite)",
+        "ShootsChemY(sat0:satellite)",
+        "HasGeiger(sat0:satellite)",
+        "HasGeiger(sat1:satellite)"
+      ],
+      [
+        "CalibrationTarget(sat1:satellite, obj1:object)",
+        "ShootsChemX(sat0:satellite)",
+        "CalibrationTarget(sat0:satellite, obj1:object)",
+        "GeigerReadingTaken(sat1:satellite, obj0:object)",
+        "ShootsChemX(sat1:satellite)",
+        "ShootsChemY(sat0:satellite)",
+        "HasGeiger(sat0:satellite)",
+        "HasGeiger(sat1:satellite)"
+      ],
+      [
+        "CalibrationTarget(sat1:satellite, obj1:object)",
+        "ShootsChemX(sat0:satellite)",
+        "CalibrationTarget(sat0:satellite, obj1:object)",
+        "GeigerReadingTaken(sat1:satellite, obj0:object)",
+        "ShootsChemX(sat1:satellite)",
+        "ShootsChemY(sat0:satellite)",
+        "GeigerReadingTaken(sat0:satellite, obj0:object)",
+        "HasGeiger(sat0:satellite)",
+        "HasGeiger(sat1:satellite)"
+      ]
+    ]
+  },
+  {
+    "states": [
+      "State(data={obj0:object: array([0.        , 0.31024188, 0.48583536, 0.        , 0.        ]), obj1:object: array([1.        , 0.88948783, 0.93404352, 0.        , 0.        ]), sat0:satellite: array([ 0.67062441,  0.64718951,  0.72498604,  0.38367755,  0.        ,\n        0.        , -1.        ,  1.        ,  1.        ]), sat1:satellite: array([ 0.68844673,  0.38892142, -2.29275628,  0.72148834,  1.        ,\n        0.        , -1.        ,  1.        ,  1.        ])}, simulator_state=None)",
+      "State(data={obj0:object: array([0.        , 0.31024188, 0.48583536, 0.        , 0.        ]), obj1:object: array([1.        , 0.88948783, 0.93404352, 0.        , 0.        ]), sat0:satellite: array([ 0.67062441,  0.64718951,  0.72498604,  0.38367755,  0.        ,\n        0.        , -1.        ,  1.        ,  1.        ]), sat1:satellite: array([ 0.91662598,  0.84774554,  1.87547481,  0.72148834,  1.        ,\n        0.        , -1.        ,  1.        ,  1.        ])}, simulator_state=None)",
+      "State(data={obj0:object: array([0.        , 0.31024188, 0.48583536, 0.        , 0.        ]), obj1:object: array([1.        , 0.88948783, 0.93404352, 0.        , 0.        ]), sat0:satellite: array([ 0.67062441,  0.64718951,  0.72498604,  0.38367755,  0.        ,\n        0.        , -1.        ,  1.        ,  1.        ]), sat1:satellite: array([ 0.91662598,  0.84774554,  1.87547481,  0.72148834,  1.        ,\n        1.        , -1.        ,  1.        ,  1.        ])}, simulator_state=None)",
+      "State(data={obj0:object: array([0.        , 0.31024188, 0.48583536, 0.        , 0.        ]), obj1:object: array([1.        , 0.88948783, 0.93404352, 0.        , 0.        ]), sat0:satellite: array([ 0.67062441,  0.64718951,  0.72498604,  0.38367755,  0.        ,\n        0.        , -1.        ,  1.        ,  1.        ]), sat1:satellite: array([ 0.81422573,  0.09191594,  1.48166168,  0.72148834,  1.        ,\n        1.        , -1.        ,  1.        ,  1.        ])}, simulator_state=None)",
+      "State(data={obj0:object: array([0.        , 0.31024188, 0.48583536, 0.        , 0.        ]), obj1:object: array([1.        , 0.88948783, 0.93404352, 0.        , 0.        ]), sat0:satellite: array([ 0.67062441,  0.64718951,  0.72498604,  0.38367755,  0.        ,\n        0.        , -1.        ,  1.        ,  1.        ]), sat1:satellite: array([ 0.32420972,  0.58889717, -1.7055043 ,  0.72148834,  1.        ,\n        1.        , -1.        ,  1.        ,  1.        ])}, simulator_state=None)",
+      "State(data={obj0:object: array([0.        , 0.31024188, 0.48583536, 0.        , 0.        ]), obj1:object: array([1.        , 0.88948783, 0.93404352, 0.        , 0.        ]), sat0:satellite: array([ 0.67062441,  0.64718951,  0.72498604,  0.38367755,  0.        ,\n        0.        , -1.        ,  1.        ,  1.        ]), sat1:satellite: array([ 0.32420972,  0.58889717, -1.7055043 ,  0.72148834,  1.        ,\n        1.        ,  0.        ,  1.        ,  1.        ])}, simulator_state=None)",
+      "State(data={obj0:object: array([0.        , 0.31024188, 0.48583536, 0.        , 0.        ]), obj1:object: array([1.        , 0.88948783, 0.93404352, 0.        , 0.        ]), sat0:satellite: array([ 0.22792706,  0.4561145 ,  0.3464967 ,  0.38367755,  0.        ,\n        0.        , -1.        ,  1.        ,  1.        ]), sat1:satellite: array([ 0.32420972,  0.58889717, -1.7055043 ,  0.72148834,  1.        ,\n        1.        ,  0.        ,  1.        ,  1.        ])}, simulator_state=None)",
+      "State(data={obj0:object: array([0.        , 0.31024188, 0.48583536, 0.        , 0.        ]), obj1:object: array([1.        , 0.88948783, 0.93404352, 0.        , 0.        ]), sat0:satellite: array([ 0.22792706,  0.4561145 ,  0.3464967 ,  0.38367755,  0.        ,\n        1.        , -1.        ,  1.        ,  1.        ]), sat1:satellite: array([ 0.32420972,  0.58889717, -1.7055043 ,  0.72148834,  1.        ,\n        1.        ,  0.        ,  1.        ,  1.        ])}, simulator_state=None)",
+      "State(data={obj0:object: array([0.        , 0.31024188, 0.48583536, 0.        , 0.        ]), obj1:object: array([1.        , 0.88948783, 0.93404352, 0.        , 0.        ]), sat0:satellite: array([ 0.56226563,  0.15006226,  2.21466708,  0.38367755,  0.        ,\n        1.        , -1.        ,  1.        ,  1.        ]), sat1:satellite: array([ 0.32420972,  0.58889717, -1.7055043 ,  0.72148834,  1.        ,\n        1.        ,  0.        ,  1.        ,  1.        ])}, simulator_state=None)",
+      "State(data={obj0:object: array([0.        , 0.31024188, 0.48583536, 0.        , 0.        ]), obj1:object: array([1.        , 0.88948783, 0.93404352, 0.        , 0.        ]), sat0:satellite: array([ 0.93674099,  1.        , -2.19246364,  0.38367755,  0.        ,\n        1.        , -1.        ,  1.        ,  1.        ]), sat1:satellite: array([ 0.32420972,  0.58889717, -1.7055043 ,  0.72148834,  1.        ,\n        1.        ,  0.        ,  1.        ,  1.        ])}, simulator_state=None)",
+      "State(data={obj0:object: array([0.        , 0.31024188, 0.48583536, 0.        , 0.        ]), obj1:object: array([1.        , 0.88948783, 0.93404352, 0.        , 1.        ]), sat0:satellite: array([ 0.93674099,  1.        , -2.19246364,  0.38367755,  0.        ,\n        1.        , -1.        ,  1.        ,  1.        ]), sat1:satellite: array([ 0.32420972,  0.58889717, -1.7055043 ,  0.72148834,  1.        ,\n        1.        ,  0.        ,  1.        ,  1.        ])}, simulator_state=None)",
+      "State(data={obj0:object: array([0.        , 0.31024188, 0.48583536, 0.        , 0.        ]), obj1:object: array([1.        , 0.88948783, 0.93404352, 0.        , 1.        ]), sat0:satellite: array([ 0.93674099,  1.        , -2.19246364,  0.38367755,  0.        ,\n        1.        ,  1.        ,  1.        ,  1.        ]), sat1:satellite: array([ 0.32420972,  0.58889717, -1.7055043 ,  0.72148834,  1.        ,\n        1.        ,  0.        ,  1.        ,  1.        ])}, simulator_state=None)"
+    ],
+    "actions": [
+      {
+        "name": "SingletonParameterizedOption(name='MoveTo', types=[Type(name='satellite'), Type(name='object')])",
+        "objects": [
+          "sat1:satellite",
+          "obj1:object"
+        ]
+      },
+      {
+        "name": "SingletonParameterizedOption(name='Calibrate', types=[Type(name='satellite'), Type(name='object')])",
+        "objects": [
+          "sat1:satellite",
+          "obj1:object"
+        ]
+      },
+      {
+        "name": "SingletonParameterizedOption(name='MoveAway', types=[Type(name='satellite'), Type(name='object')])",
+        "objects": [
+          "sat1:satellite",
+          "obj1:object"
+        ]
+      },
+      {
+        "name": "SingletonParameterizedOption(name='MoveTo', types=[Type(name='satellite'), Type(name='object')])",
+        "objects": [
+          "sat1:satellite",
+          "obj0:object"
+        ]
+      },
+      {
+        "name": "SingletonParameterizedOption(name='UseGeiger', types=[Type(name='satellite'), Type(name='object')])",
+        "objects": [
+          "sat1:satellite",
+          "obj0:object"
+        ]
+      },
+      {
+        "name": "SingletonParameterizedOption(name='MoveTo', types=[Type(name='satellite'), Type(name='object')])",
+        "objects": [
+          "sat0:satellite",
+          "obj0:object"
+        ]
+      },
+      {
+        "name": "SingletonParameterizedOption(name='Calibrate', types=[Type(name='satellite'), Type(name='object')])",
+        "objects": [
+          "sat0:satellite",
+          "obj0:object"
+        ]
+      },
+      {
+        "name": "SingletonParameterizedOption(name='MoveAway', types=[Type(name='satellite'), Type(name='object')])",
+        "objects": [
+          "sat0:satellite",
+          "obj0:object"
+        ]
+      },
+      {
+        "name": "SingletonParameterizedOption(name='MoveTo', types=[Type(name='satellite'), Type(name='object')])",
+        "objects": [
+          "sat0:satellite",
+          "obj1:object"
+        ]
+      },
+      {
+        "name": "SingletonParameterizedOption(name='ShootChemY', types=[Type(name='satellite'), Type(name='object')])",
+        "objects": [
+          "sat0:satellite",
+          "obj1:object"
+        ]
+      },
+      {
+        "name": "SingletonParameterizedOption(name='UseInfraRed', types=[Type(name='satellite'), Type(name='object')])",
+        "objects": [
+          "sat0:satellite",
+          "obj1:object"
+        ]
+      }
+    ],
+    "atoms": [
+      [
+        "CalibrationTarget(sat1:satellite, obj1:object)",
+        "ShootsChemX(sat0:satellite)",
+        "ShootsChemY(sat1:satellite)",
+        "HasInfrared(sat0:satellite)",
+        "CalibrationTarget(sat0:satellite, obj0:object)",
+        "ShootsChemX(sat1:satellite)",
+        "ShootsChemY(sat0:satellite)",
+        "HasGeiger(sat1:satellite)"
+      ],
+      [
+        "CalibrationTarget(sat1:satellite, obj1:object)",
+        "ShootsChemX(sat0:satellite)",
+        "ShootsChemY(sat1:satellite)",
+        "HasInfrared(sat0:satellite)",
+        "CalibrationTarget(sat0:satellite, obj0:object)",
+        "ShootsChemX(sat1:satellite)",
+        "ShootsChemY(sat0:satellite)",
+        "HasGeiger(sat1:satellite)"
+      ],
+      [
+        "CalibrationTarget(sat1:satellite, obj1:object)",
+        "ShootsChemX(sat0:satellite)",
+        "ShootsChemY(sat1:satellite)",
+        "HasInfrared(sat0:satellite)",
+        "CalibrationTarget(sat0:satellite, obj0:object)",
+        "ShootsChemX(sat1:satellite)",
+        "ShootsChemY(sat0:satellite)",
+        "HasGeiger(sat1:satellite)"
+      ],
+      [
+        "CalibrationTarget(sat1:satellite, obj1:object)",
+        "ShootsChemX(sat0:satellite)",
+        "ShootsChemY(sat1:satellite)",
+        "HasInfrared(sat0:satellite)",
+        "CalibrationTarget(sat0:satellite, obj0:object)",
+        "ShootsChemX(sat1:satellite)",
+        "ShootsChemY(sat0:satellite)",
+        "HasGeiger(sat1:satellite)"
+      ],
+      [
+        "CalibrationTarget(sat1:satellite, obj1:object)",
+        "ShootsChemX(sat0:satellite)",
+        "ShootsChemY(sat1:satellite)",
+        "HasInfrared(sat0:satellite)",
+        "CalibrationTarget(sat0:satellite, obj0:object)",
+        "ShootsChemX(sat1:satellite)",
+        "ShootsChemY(sat0:satellite)",
+        "HasGeiger(sat1:satellite)"
+      ],
+      [
+        "CalibrationTarget(sat1:satellite, obj1:object)",
+        "ShootsChemX(sat0:satellite)",
+        "GeigerReadingTaken(sat1:satellite, obj0:object)",
+        "ShootsChemY(sat1:satellite)",
+        "HasInfrared(sat0:satellite)",
+        "CalibrationTarget(sat0:satellite, obj0:object)",
+        "ShootsChemX(sat1:satellite)",
+        "ShootsChemY(sat0:satellite)",
+        "HasGeiger(sat1:satellite)"
+      ],
+      [
+        "CalibrationTarget(sat1:satellite, obj1:object)",
+        "ShootsChemX(sat0:satellite)",
+        "GeigerReadingTaken(sat1:satellite, obj0:object)",
+        "ShootsChemY(sat1:satellite)",
+        "HasInfrared(sat0:satellite)",
+        "CalibrationTarget(sat0:satellite, obj0:object)",
+        "ShootsChemX(sat1:satellite)",
+        "ShootsChemY(sat0:satellite)",
+        "HasGeiger(sat1:satellite)"
+      ],
+      [
+        "CalibrationTarget(sat1:satellite, obj1:object)",
+        "ShootsChemX(sat0:satellite)",
+        "GeigerReadingTaken(sat1:satellite, obj0:object)",
+        "ShootsChemY(sat1:satellite)",
+        "HasInfrared(sat0:satellite)",
+        "CalibrationTarget(sat0:satellite, obj0:object)",
+        "ShootsChemX(sat1:satellite)",
+        "ShootsChemY(sat0:satellite)",
+        "HasGeiger(sat1:satellite)"
+      ],
+      [
+        "CalibrationTarget(sat1:satellite, obj1:object)",
+        "ShootsChemX(sat0:satellite)",
+        "GeigerReadingTaken(sat1:satellite, obj0:object)",
+        "ShootsChemY(sat1:satellite)",
+        "HasInfrared(sat0:satellite)",
+        "CalibrationTarget(sat0:satellite, obj0:object)",
+        "ShootsChemX(sat1:satellite)",
+        "ShootsChemY(sat0:satellite)",
+        "HasGeiger(sat1:satellite)"
+      ],
+      [
+        "CalibrationTarget(sat1:satellite, obj1:object)",
+        "ShootsChemX(sat0:satellite)",
+        "GeigerReadingTaken(sat1:satellite, obj0:object)",
+        "ShootsChemY(sat1:satellite)",
+        "HasInfrared(sat0:satellite)",
+        "CalibrationTarget(sat0:satellite, obj0:object)",
+        "ShootsChemX(sat1:satellite)",
+        "ShootsChemY(sat0:satellite)",
+        "HasGeiger(sat1:satellite)"
+      ],
+      [
+        "CalibrationTarget(sat1:satellite, obj1:object)",
+        "ShootsChemX(sat0:satellite)",
+        "GeigerReadingTaken(sat1:satellite, obj0:object)",
+        "ShootsChemY(sat1:satellite)",
+        "HasInfrared(sat0:satellite)",
+        "CalibrationTarget(sat0:satellite, obj0:object)",
+        "ShootsChemX(sat1:satellite)",
+        "ShootsChemY(sat0:satellite)",
+        "HasGeiger(sat1:satellite)"
+      ],
+      [
+        "CalibrationTarget(sat1:satellite, obj1:object)",
+        "ShootsChemX(sat0:satellite)",
+        "GeigerReadingTaken(sat1:satellite, obj0:object)",
+        "ShootsChemY(sat1:satellite)",
+        "HasInfrared(sat0:satellite)",
+        "CalibrationTarget(sat0:satellite, obj0:object)",
+        "ShootsChemX(sat1:satellite)",
+        "ShootsChemY(sat0:satellite)",
+        "HasGeiger(sat1:satellite)",
+        "InfraredReadingTaken(sat0:satellite, obj1:object)"
+      ]
+    ]
+  },
+  {
+    "states": [
+      "State(data={obj0:object: array([0.        , 0.05856803, 0.33611706, 0.        , 0.        ]), obj1:object: array([1.        , 0.79632427, 0.23064221, 0.        , 0.        ]), sat0:satellite: array([ 0.32186939,  0.59430003, -1.01843381,  0.391619  ,  0.        ,\n        0.        , -1.        ,  1.        ,  0.        ]), sat1:satellite: array([ 0.62318714,  0.08401534,  2.09006482,  0.78709831,  0.        ,\n        0.        , -1.        ,  0.        ,  1.        ])}, simulator_state=None)",
+      "State(data={obj0:object: array([0.        , 0.05856803, 0.33611706, 0.        , 0.        ]), obj1:object: array([1.        , 0.79632427, 0.23064221, 0.        , 0.        ]), sat0:satellite: array([ 0.32186939,  0.59430003, -1.01843381,  0.391619  ,  0.        ,\n        0.        , -1.        ,  1.        ,  0.        ]), sat1:satellite: array([ 0.05166227,  0.2529774 ,  1.48792434,  0.78709831,  0.        ,\n        0.        , -1.        ,  0.        ,  1.        ])}, simulator_state=None)",
+      "State(data={obj0:object: array([0.        , 0.05856803, 0.33611706, 0.        , 0.        ]), obj1:object: array([1.        , 0.79632427, 0.23064221, 0.        , 0.        ]), sat0:satellite: array([ 0.32186939,  0.59430003, -1.01843381,  0.391619  ,  0.        ,\n        0.        , -1.        ,  1.        ,  0.        ]), sat1:satellite: array([ 0.05166227,  0.2529774 ,  1.48792434,  0.78709831,  0.        ,\n        1.        , -1.        ,  0.        ,  1.        ])}, simulator_state=None)",
+      "State(data={obj0:object: array([0.        , 0.05856803, 0.33611706, 0.        , 0.        ]), obj1:object: array([1.        , 0.79632427, 0.23064221, 0.        , 0.        ]), sat0:satellite: array([ 0.32186939,  0.59430003, -1.01843381,  0.391619  ,  0.        ,\n        0.        , -1.        ,  1.        ,  0.        ]), sat1:satellite: array([ 0.80127448,  0.58216202, -2.82168984,  0.78709831,  0.        ,\n        1.        , -1.        ,  0.        ,  1.        ])}, simulator_state=None)",
+      "State(data={obj0:object: array([0.        , 0.05856803, 0.33611706, 0.        , 0.        ]), obj1:object: array([1.        , 0.79632427, 0.23064221, 0.        , 0.        ]), sat0:satellite: array([ 0.32186939,  0.59430003, -1.01843381,  0.391619  ,  0.        ,\n        0.        , -1.        ,  1.        ,  0.        ]), sat1:satellite: array([ 0.87280327,  0.19647264,  2.72141671,  0.78709831,  0.        ,\n        1.        , -1.        ,  0.        ,  1.        ])}, simulator_state=None)",
+      "State(data={obj0:object: array([0.        , 0.05856803, 0.33611706, 0.        , 0.        ]), obj1:object: array([1.        , 0.79632427, 0.23064221, 0.        , 1.        ]), sat0:satellite: array([ 0.32186939,  0.59430003, -1.01843381,  0.391619  ,  0.        ,\n        0.        , -1.        ,  1.        ,  0.        ]), sat1:satellite: array([ 0.87280327,  0.19647264,  2.72141671,  0.78709831,  0.        ,\n        1.        , -1.        ,  0.        ,  1.        ])}, simulator_state=None)",
+      "State(data={obj0:object: array([0.        , 0.05856803, 0.33611706, 0.        , 0.        ]), obj1:object: array([1.        , 0.79632427, 0.23064221, 0.        , 1.        ]), sat0:satellite: array([ 0.32186939,  0.59430003, -1.01843381,  0.391619  ,  0.        ,\n        0.        , -1.        ,  1.        ,  0.        ]), sat1:satellite: array([0.87280327, 0.19647264, 2.72141671, 0.78709831, 0.        ,\n       1.        , 1.        , 0.        , 1.        ])}, simulator_state=None)",
+      "State(data={obj0:object: array([0.        , 0.05856803, 0.33611706, 0.        , 0.        ]), obj1:object: array([1.        , 0.79632427, 0.23064221, 0.        , 1.        ]), sat0:satellite: array([ 0.00529708,  0.25247905,  1.00366914,  0.391619  ,  0.        ,\n        0.        , -1.        ,  1.        ,  0.        ]), sat1:satellite: array([0.87280327, 0.19647264, 2.72141671, 0.78709831, 0.        ,\n       1.        , 1.        , 0.        , 1.        ])}, simulator_state=None)",
+      "State(data={obj0:object: array([0.        , 0.05856803, 0.33611706, 0.        , 0.        ]), obj1:object: array([1.        , 0.79632427, 0.23064221, 0.        , 1.        ]), sat0:satellite: array([ 0.00529708,  0.25247905,  1.00366914,  0.391619  ,  0.        ,\n        1.        , -1.        ,  1.        ,  0.        ]), sat1:satellite: array([0.87280327, 0.19647264, 2.72141671, 0.78709831, 0.        ,\n       1.        , 1.        , 0.        , 1.        ])}, simulator_state=None)",
+      "State(data={obj0:object: array([0.        , 0.05856803, 0.33611706, 0.        , 0.        ]), obj1:object: array([1.        , 0.79632427, 0.23064221, 0.        , 1.        ]), sat0:satellite: array([ 0.3912282 ,  0.5167402 , -2.64416599,  0.391619  ,  0.        ,\n        1.        , -1.        ,  1.        ,  0.        ]), sat1:satellite: array([0.87280327, 0.19647264, 2.72141671, 0.78709831, 0.        ,\n       1.        , 1.        , 0.        , 1.        ])}, simulator_state=None)",
+      "State(data={obj0:object: array([0.        , 0.05856803, 0.33611706, 0.        , 0.        ]), obj1:object: array([1.        , 0.79632427, 0.23064221, 0.        , 1.        ]), sat0:satellite: array([ 0.87944537,  0.28107634, -2.59622145,  0.391619  ,  0.        ,\n        1.        , -1.        ,  1.        ,  0.        ]), sat1:satellite: array([0.87280327, 0.19647264, 2.72141671, 0.78709831, 0.        ,\n       1.        , 1.        , 0.        , 1.        ])}, simulator_state=None)",
+      "State(data={obj0:object: array([0.        , 0.05856803, 0.33611706, 0.        , 0.        ]), obj1:object: array([1.        , 0.79632427, 0.23064221, 0.        , 1.        ]), sat0:satellite: array([ 0.87944537,  0.28107634, -2.59622145,  0.391619  ,  0.        ,\n        1.        ,  1.        ,  1.        ,  0.        ]), sat1:satellite: array([0.87280327, 0.19647264, 2.72141671, 0.78709831, 0.        ,\n       1.        , 1.        , 0.        , 1.        ])}, simulator_state=None)"
+    ],
+    "actions": [
+      {
+        "name": "SingletonParameterizedOption(name='MoveTo', types=[Type(name='satellite'), Type(name='object')])",
+        "objects": [
+          "sat1:satellite",
+          "obj0:object"
+        ]
+      },
+      {
+        "name": "SingletonParameterizedOption(name='Calibrate', types=[Type(name='satellite'), Type(name='object')])",
+        "objects": [
+          "sat1:satellite",
+          "obj0:object"
+        ]
+      },
+      {
+        "name": "SingletonParameterizedOption(name='MoveAway', types=[Type(name='satellite'), Type(name='object')])",
+        "objects": [
+          "sat1:satellite",
+          "obj0:object"
+        ]
+      },
+      {
+        "name": "SingletonParameterizedOption(name='MoveTo', types=[Type(name='satellite'), Type(name='object')])",
+        "objects": [
+          "sat1:satellite",
+          "obj1:object"
+        ]
+      },
+      {
+        "name": "SingletonParameterizedOption(name='ShootChemY', types=[Type(name='satellite'), Type(name='object')])",
+        "objects": [
+          "sat1:satellite",
+          "obj1:object"
+        ]
+      },
+      {
+        "name": "SingletonParameterizedOption(name='UseGeiger', types=[Type(name='satellite'), Type(name='object')])",
+        "objects": [
+          "sat1:satellite",
+          "obj1:object"
+        ]
+      },
+      {
+        "name": "SingletonParameterizedOption(name='MoveTo', types=[Type(name='satellite'), Type(name='object')])",
+        "objects": [
+          "sat0:satellite",
+          "obj0:object"
+        ]
+      },
+      {
+        "name": "SingletonParameterizedOption(name='Calibrate', types=[Type(name='satellite'), Type(name='object')])",
+        "objects": [
+          "sat0:satellite",
+          "obj0:object"
+        ]
+      },
+      {
+        "name": "SingletonParameterizedOption(name='MoveAway', types=[Type(name='satellite'), Type(name='object')])",
+        "objects": [
+          "sat0:satellite",
+          "obj0:object"
+        ]
+      },
+      {
+        "name": "SingletonParameterizedOption(name='MoveTo', types=[Type(name='satellite'), Type(name='object')])",
+        "objects": [
+          "sat0:satellite",
+          "obj1:object"
+        ]
+      },
+      {
+        "name": "SingletonParameterizedOption(name='UseInfraRed', types=[Type(name='satellite'), Type(name='object')])",
+        "objects": [
+          "sat0:satellite",
+          "obj1:object"
+        ]
+      }
+    ],
+    "atoms": [
+      [
+        "ShootsChemX(sat0:satellite)",
+        "ShootsChemY(sat1:satellite)",
+        "CalibrationTarget(sat1:satellite, obj0:object)",
+        "HasInfrared(sat0:satellite)",
+        "CalibrationTarget(sat0:satellite, obj0:object)",
+        "HasGeiger(sat1:satellite)"
+      ],
+      [
+        "ShootsChemX(sat0:satellite)",
+        "ShootsChemY(sat1:satellite)",
+        "CalibrationTarget(sat1:satellite, obj0:object)",
+        "HasInfrared(sat0:satellite)",
+        "CalibrationTarget(sat0:satellite, obj0:object)",
+        "HasGeiger(sat1:satellite)"
+      ],
+      [
+        "ShootsChemX(sat0:satellite)",
+        "ShootsChemY(sat1:satellite)",
+        "CalibrationTarget(sat1:satellite, obj0:object)",
+        "HasInfrared(sat0:satellite)",
+        "CalibrationTarget(sat0:satellite, obj0:object)",
+        "HasGeiger(sat1:satellite)"
+      ],
+      [
+        "ShootsChemX(sat0:satellite)",
+        "ShootsChemY(sat1:satellite)",
+        "CalibrationTarget(sat1:satellite, obj0:object)",
+        "HasInfrared(sat0:satellite)",
+        "CalibrationTarget(sat0:satellite, obj0:object)",
+        "HasGeiger(sat1:satellite)"
+      ],
+      [
+        "ShootsChemX(sat0:satellite)",
+        "ShootsChemY(sat1:satellite)",
+        "CalibrationTarget(sat1:satellite, obj0:object)",
+        "HasInfrared(sat0:satellite)",
+        "CalibrationTarget(sat0:satellite, obj0:object)",
+        "HasGeiger(sat1:satellite)"
+      ],
+      [
+        "ShootsChemX(sat0:satellite)",
+        "ShootsChemY(sat1:satellite)",
+        "CalibrationTarget(sat1:satellite, obj0:object)",
+        "HasInfrared(sat0:satellite)",
+        "CalibrationTarget(sat0:satellite, obj0:object)",
+        "HasGeiger(sat1:satellite)"
+      ],
+      [
+        "ShootsChemX(sat0:satellite)",
+        "CalibrationTarget(sat1:satellite, obj0:object)",
+        "ShootsChemY(sat1:satellite)",
+        "HasInfrared(sat0:satellite)",
+        "GeigerReadingTaken(sat1:satellite, obj1:object)",
+        "CalibrationTarget(sat0:satellite, obj0:object)",
+        "HasGeiger(sat1:satellite)"
+      ],
+      [
+        "ShootsChemX(sat0:satellite)",
+        "CalibrationTarget(sat1:satellite, obj0:object)",
+        "ShootsChemY(sat1:satellite)",
+        "HasInfrared(sat0:satellite)",
+        "GeigerReadingTaken(sat1:satellite, obj1:object)",
+        "CalibrationTarget(sat0:satellite, obj0:object)",
+        "HasGeiger(sat1:satellite)"
+      ],
+      [
+        "ShootsChemX(sat0:satellite)",
+        "CalibrationTarget(sat1:satellite, obj0:object)",
+        "ShootsChemY(sat1:satellite)",
+        "HasInfrared(sat0:satellite)",
+        "GeigerReadingTaken(sat1:satellite, obj1:object)",
+        "CalibrationTarget(sat0:satellite, obj0:object)",
+        "HasGeiger(sat1:satellite)"
+      ],
+      [
+        "ShootsChemX(sat0:satellite)",
+        "CalibrationTarget(sat1:satellite, obj0:object)",
+        "ShootsChemY(sat1:satellite)",
+        "HasInfrared(sat0:satellite)",
+        "GeigerReadingTaken(sat1:satellite, obj1:object)",
+        "CalibrationTarget(sat0:satellite, obj0:object)",
+        "HasGeiger(sat1:satellite)"
+      ],
+      [
+        "ShootsChemX(sat0:satellite)",
+        "CalibrationTarget(sat1:satellite, obj0:object)",
+        "ShootsChemY(sat1:satellite)",
+        "HasInfrared(sat0:satellite)",
+        "GeigerReadingTaken(sat1:satellite, obj1:object)",
+        "CalibrationTarget(sat0:satellite, obj0:object)",
+        "HasGeiger(sat1:satellite)"
+      ],
+      [
+        "ShootsChemX(sat0:satellite)",
+        "CalibrationTarget(sat1:satellite, obj0:object)",
+        "ShootsChemY(sat1:satellite)",
+        "HasInfrared(sat0:satellite)",
+        "GeigerReadingTaken(sat1:satellite, obj1:object)",
+        "CalibrationTarget(sat0:satellite, obj0:object)",
+        "HasGeiger(sat1:satellite)",
+        "InfraredReadingTaken(sat0:satellite, obj1:object)"
+      ]
+    ]
+  }
+]
