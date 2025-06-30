@@ -1,0 +1,16 @@
+{
+    "version": 1,
+    "predicates": [
+      {
+        "name": "goalachieved",
+        "arity": 2,
+        "types": ["block", "block"],
+        "role": "goal",
+        "effect_map": {
+          "AchieveGoal": "add"
+        }
+      }
+     
+    ]
+  }
+  

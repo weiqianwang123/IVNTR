@@ -1048,27 +1048,45 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
             atoms_traj.append(atoms_) # the last state atoms
             ground_atom_dataset.append((ll_traj, atoms_traj))
         self.max_action_arity = max_action_arity
-        def format_demo_traj(traj, atoms_traj, segment_traj) -> str:
-            """把一条完整 LowLevelTrajectory 转成单行文本。"""
-            steps = []
-            for i in range(len(segment_traj)):
-                state_str = " ".join(str(a) for a in atoms_traj[i])
-                action = segment_traj[i].get_option()
-                act_str = f"{action.parent}({', '.join(str(o) for o in action.objects)})"
-                steps.append(f"state{i}: {state_str} - {act_str}")
-            # 最后一个 stateN
-            stateN_str = " ".join(str(a) for a in atoms_traj[-1])
-            steps.append(f"state{len(atoms_traj)-1}: {stateN_str}")
-            return " -> ".join(steps)
-        # ---- 把前三条演示轨迹转文字 ----
+        def simplify_action_string(action) -> str:
+            """将复杂的 SingletonParameterizedOption 动作格式简化为可读格式。"""
+            option = action.get_option()
+            name = option.parent.name
+            obj_names = [str(o).split(":")[0] for o in option.objects]  # 去掉 ":type"
+            return f"{name}({', '.join(obj_names)})"
+
+        def format_demo_traj_static_atoms(traj, atoms_traj, segment_traj) -> str:
+            """格式化一条演示轨迹，显示初始状态、动作序列和最终新增加的 atom。"""
+            # 初始状态 atoms
+            init_atoms = atoms_traj[0]
+            init_str = " ".join(str(a) for a in init_atoms)
+
+            # 简化后的动作序列
+            actions = [simplify_action_string(action) for action in segment_traj]
+
+            # 最终状态新增 atom（goal）
+            final_atoms = atoms_traj[-1]
+            added_atoms = set(final_atoms) - set(init_atoms)
+            added_str = " ".join(str(a) for a in added_atoms) if added_atoms else "(no new atom)"
+
+            return (
+                f"Initial state atoms:\n{init_str}\n\n"
+                f"Note: Atoms remain unchanged throughout until the goal is achieved.\n\n"
+                f"Action sequence:\n" + "\n".join(f"- {a}" for a in actions) + "\n\n"
+                f"Final state contains one new atom indicating goal achieved:\n{added_str}"
+            )
+
+
+        # ---- 格式化前 3 条演示轨迹 ----
         demo_lines = []
         for (traj, atoms_traj), seg_traj in zip(ground_atom_dataset[:3], segmented_trajs[:3]):
-            demo_lines.append(format_demo_traj(traj, atoms_traj, seg_traj))
+            demo_lines.append(format_demo_traj_static_atoms(traj, atoms_traj, seg_traj))
 
         demo_prompt = (
-            "Here are 3 demonstration trajectories (state-atoms-action format):\n"
-            + "\n\n".join(demo_lines) + "\n\n"
+            "Here are 3 demonstration trajectories in simplified format:\n\n"
+            + "\n\n---\n\n".join(demo_lines) + "\n\n"
         )
+
         # import json
 
       
@@ -1338,6 +1356,7 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
             # find the operated object that is the argument in the pred
             if len(action_ent[type0]) <= ent0 or len(action_ent[type1]) <= ent1:
                 # action objs do not have enough objects for this predicate
+                
                 assert (ae_vector_value==0).all(), "Should be zero"
                 pred_type_obj0 = None
                 pred_type_obj1 = None
@@ -1640,7 +1659,7 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
 
         multi_llm = PDDLEffectVectorGenerator(                  # <- NEW
                 target_preds   = all_target_preds,
-                sorted_options = list(self._initial_options),
+                sorted_options = list(self._sorted_options),
                 domain_desc    = self.pred_config[0]['domain_desc'],
                 other_predicates = self._initial_predicates,
                 demo_prompt    = demo_prompt)
@@ -1799,25 +1818,27 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                 
                 seed_rows = llm_effect_bank.get(curr_pred, [])
                 seed_rows = [row for row in seed_rows if (row != 0).any()]
-                if not seed_rows:          # 全 0 或 PDDL 没给 → 跳过
+                sat_vectors = self.gen_sat_vec_from_seed(curr_pred, seed_rows)  # ✔ 得到合法向量
+                if not  sat_vectors:          # 全 0 或 PDDL 没给 → 跳过
                     logging.info("☛ Skip %s : all-zero seed vectors.", curr_pred.name)
                     self.learned_ae_pred_info[curr_pred]['learned'] = True
                     continue
-                def _row_to_mat(row: torch.Tensor) -> torch.Tensor:
-                    n = row.size(0)
-                    mat = torch.zeros((n, 2), dtype=torch.long, device=row.device)
-                    mat[:, 0] = (row == 1).long()        # add
-                    mat[:, 1] = (row == 2).long()        # delete
-                    return mat
+               
+                # def _row_to_mat(row: torch.Tensor) -> torch.Tensor:
+                #     n = row.size(0)
+                #     mat = torch.zeros((n, 2), dtype=torch.long, device=row.device)
+                #     mat[:, 0] = (row == 1).long()        # add
+                #     mat[:, 1] = (row == 2).long()        # delete
+                #     return mat
 
                 # convert all rows now
-                seed_mats: List[torch.Tensor] = [_row_to_mat(r) for r in seed_rows]
+                # seed_mats: List[torch.Tensor] = [_row_to_mat(r) for r in seed_rows]
 
         
                 s_time = time.time()
                 iter_ae_vectors, iter_guidance_vecs, iter_val_loss, model_weight_paths = \
                     self.gen_ae_vectors4pred(curr_pred, ent_idx, pred_save_path, \
-                                            pred_config, data,seed_mats)
+                                            pred_config, data,sat_vectors)
                 if len(model_weight_paths) == 0:
                     logging.info(f"cannot find weight!")
                     break
@@ -1877,200 +1898,200 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                     saved_ae_vector_path = saved_model_path.replace("_model", "_ae_vector")
                     os.rename(saved_ae_vector_path, saved_ae_vector_path.replace("_ae_vector", "_ae_vector_good"))
                 # 4.3 Check the Negated / Quantified version
-                if CFG.neupi_w_negation or CFG.neupi_w_quantifiers:
-                    if curr_pred.arity == 1:
-                        logging.info("Skipping Negated / Quantified version for unary predicate...")
-                        # only support binary + quantifier now
-                        continue
-                    if os.path.exists(self.learned_ae_pred_info[curr_pred]['model_weights'][i].replace("_model_good.pth", "quantified.pkl")):
-                        logging.info("Negated / Quantified version already exists, loading...")
-                        with open(self.learned_ae_pred_info[curr_pred]['model_weights'][i].replace("_model_good.pth", "quantified.pkl"), 'rb') as f:
-                            quantified_info = pkl.load(f)
-                        for m in range(1, len(quantified_info['ent_idx'])):
-                            logging.info(f"Negated / Quantified version {m}...")
-                            logging.info(f"Quantifier: {quantified_info['quantifiers'][m]}")
-                            logging.info(f"AE Vector {m}: {two2one(quantified_info['ae_vecs'][m])}")
-                            # skipping the first one, as it is the original one
-                            self.learned_ae_pred_info[curr_pred]['ent_idx'][i].append(quantified_info['ent_idx'][m])
-                            self.learned_ae_pred_info[curr_pred]['ae_vecs'][i].append(quantified_info['ae_vecs'][m])
-                            self.learned_ae_pred_info[curr_pred]['scores'][i].append(quantified_info['scores'][m])
-                            self.learned_ae_pred_info[curr_pred]['quantifiers'][i].append(quantified_info['quantifiers'][m])
-                        continue
-                    logging.info("Checking Negated / Quantified version...")
-                    curr_pred_types = [types.name for types in curr_pred.types]
-                    typed_quantifier = []
-                    w_negation = [False] if not CFG.neupi_w_negation else [True, False]
-                    quantifiers = [''] if not CFG.neupi_w_quantifiers else ['', 'ForAll', 'Exists']
-                    pred_model_weights = torch.load(self.learned_ae_pred_info[curr_pred]['model_weights'][i])
-                    pred_model = setup_neupi_mlp_net(example_dataset,
-                                curr_pred.arity,
-                                pred_config['architecture'],
-                                self._node_feature_to_index,
-                                self._edge_feature_to_index)
-                    pred_model.load_state_dict(pred_model_weights)
-                    if CFG.neupi_quantify_dataset != 1.0:
-                        logging.info(f"Quantifying Dataset: {CFG.neupi_quantify_dataset}")
-                        self._rng.shuffle(data)
-                    quantify_data = data[:int(len(data) * CFG.neupi_quantify_dataset)]
-                    _, val_dataset = self.gen_graph_data(quantify_data, curr_pred, ent_idx, \
-                    curr_ae_vector.clone())
-                    val_dataloader = DataLoader(val_dataset,
-                        batch_size=1, # always use 1 for memory
-                        shuffle=False,
-                        num_workers=4,
-                        pin_memory=False,
-                        collate_fn=action_graph_batch_collate)
-                    # just inference once and use the outputs
-                    logging.info("Inference for the current predicate model...")
-                    data_results = inferece_dataloader(val_dataloader, pred_model, \
-                                                       pred_config['gumbel_temp'], \
-                                                       pred_config['decision_b'], \
-                                                       CFG.device)
-                    quantified_threshold = pred_config['quantified_guidance_thresh'] if "quantified_guidance_thresh" \
-                                            in pred_config else pred_config['guidance_thresh']
-                    for neg in w_negation:
-                        logging.info(f"Negation: {neg}")
-                        for quantifier in quantifiers:
-                            if quantifier == '':
-                                local_ent_idx = ent_idx
-                                logging.info(f"No Quantifier, using the original ent idx: {local_ent_idx}")
-                                if not neg:
-                                    continue
-                                type_comb = []
-                                local_name = gen_pretty_pred_name(basic_pred_name, type_comb, \
-                                                                quantifier, neg)
-                                logging.info(f" ++++{local_name}++++")
-                                typed_quantifier.append((local_name))
-                                learned_ae_vector = distill_learned_ae_vector(data_results, \
-                                    pred_config['gumbel_temp'], pred_config['decision_b'], pred_model, curr_pred, local_ent_idx, \
-                                    self.ae_row_names_dict, copy.deepcopy(self._node_feature_to_index), \
-                                        CFG.device, neg, quantifier, type_comb)
-                                # no target vector will use entropy
-                                learned_guidance = compute_guidance_vector(learned_ae_vector)
-                                logging.info(f"Guidance Score: {learned_guidance}")
-                                if learned_guidance.sum() < quantified_threshold:
-                                    final_ae_vec = prob_three2two(learned_ae_vector)
-                                    if (final_ae_vec==0).all():
-                                        logging.info(f"AE Vector is all zeros, skip...")
-                                        continue
-                                    logging.info(f"Checking AP Vector for {local_name}...")
-                                    precond_pass = check_learned_ap_vector(data_results, \
-                                    pred_config['gumbel_temp'], pred_config['decision_b'], predicate_neural_model, curr_pred, local_ent_idx, \
-                                        self.ae_row_names_dict, final_ae_vec, copy.deepcopy(self._node_feature_to_index), \
-                                        CFG.device, neg, quantifier, type_comb, thresh=CFG.precond_thresh)
-                                    if precond_pass:
-                                        logging.info(f"Passed!!! Add to the final list.")
-                                        self.learned_ae_pred_info[curr_pred]['ent_idx'][i].append(local_ent_idx)
-                                        self.learned_ae_pred_info[curr_pred]['ae_vecs'][i].append(final_ae_vec.clone())
-                                        self.learned_ae_pred_info[curr_pred]['scores'][i].append(learned_guidance.clone())
-                                        quantifier_str = local_name.split(', ')[0]
-                                        neg_str = local_name.split(', ')[1].split('-')[0]
-                                        basic_pred_str = local_name.split(', ')[1].split('-')[1]
-                                        self.learned_ae_pred_info[curr_pred]['quantifiers'][i].append((quantifier_str, \
-                                                                        neg_str, basic_pred_str))
-                            else:
-                                # use idx, instead of content, to handel same name type
-                                combinded_types_idx = []
-                                curr_pred_types_ids = list(range(len(curr_pred_types)))
-                                for r in range(1, len(curr_pred_types) + 1):
-                                    combinded_types_idx += list(itertools.combinations(curr_pred_types_ids, r))
-                                for type_comb_idx in combinded_types_idx:
-                                    # who to quantify
-                                    type_comb = [curr_pred_types[t] for t in type_comb_idx]
-                                    predicate_vars = []
-                                    possible_ent_idx = []
-                                    for k, t in enumerate(curr_pred.types):
-                                        if k in type_comb_idx:
-                                            # this type is in quantifier, no id needed
-                                            predicate_vars.append(f"?{t.name[:3].lower()}")
-                                        else:
-                                            # This type is not quantified, need to specify the ent id in operator
-                                            # ent_idx is the index of the operated object, in the operator
-                                            predicate_vars.append(f"?{t.name[:3].lower()}N")
-                                            possible_ent_idx = list(range(self._max_type_id[t.name]))
-                                    if len(possible_ent_idx) == 0:
-                                        logging.info(f"The unquantified type has no choice")
-                                        basic_pred_name = f"{curr_pred.name}_{i}({','.join(predicate_vars)})"
-                                        # reset the local ent idx, as this is a new predicate
-                                        local_ent_idx = []
-                                        assert "N" not in basic_pred_name, "Should not have N"
-                                        local_name = gen_pretty_pred_name(basic_pred_name, type_comb, \
-                                                                        quantifier, neg)
-                                        logging.info(f" ++++{local_name}++++")
-                                        typed_quantifier.append((local_name))
-                                        learned_ae_vector = distill_learned_ae_vector(data_results, \
-                                                pred_config['gumbel_temp'], pred_config['decision_b'], pred_model, curr_pred, local_ent_idx, \
-                                                self.ae_row_names_dict, copy.deepcopy(self._node_feature_to_index), \
-                                                    CFG.device, neg, quantifier, type_comb_idx)
-                                        # no target vector will use entropy
-                                        learned_guidance = compute_guidance_vector(learned_ae_vector)
-                                        logging.info(f"Guidance Score: {learned_guidance}")
-                                        if learned_guidance.sum() < quantified_threshold:
-                                            final_ae_vec = prob_three2two(learned_ae_vector)
-                                            logging.info(f"Checking AP Vector for {local_name}...")
-                                            precond_pass = check_learned_ap_vector(data_results, \
-                                            pred_config['gumbel_temp'], pred_config['decision_b'], predicate_neural_model, curr_pred, local_ent_idx, \
-                                            self.ae_row_names_dict, final_ae_vec, copy.deepcopy(self._node_feature_to_index),
-                                            CFG.device, neg, quantifier, type_comb_idx, thresh=CFG.precond_thresh)
-                                            if (final_ae_vec==0).all():
-                                                logging.info(f"AE Vector is all zeros, skip...")
-                                                precond_pass = False
-                                            if precond_pass:
-                                                logging.info(f"Passed!!! Add to the final list.")
-                                                self.learned_ae_pred_info[curr_pred]['ent_idx'][i].append(local_ent_idx)
-                                                self.learned_ae_pred_info[curr_pred]['ae_vecs'][i].append(final_ae_vec.clone())
-                                                self.learned_ae_pred_info[curr_pred]['scores'][i].append(learned_guidance.clone())
-                                                quantifier_str = local_name.split(', ')[0]
-                                                neg_str = local_name.split(', ')[1].split('-')[0]
-                                                basic_pred_str = local_name.split(', ')[1].split('-')[1]
-                                                self.learned_ae_pred_info[curr_pred]['quantifiers'][i].append((quantifier_str, \
-                                                                                neg_str, basic_pred_str))
-                                    else:
-                                        logging.info(f"The unquantified type has >= one choice, checking each one of them...")
-                                        for loc_ent in possible_ent_idx:
-                                            # reset the local ent idx, as this is a new predicate
-                                            # note that ent idx is the index in the action
-                                            local_ent_idx = [loc_ent]
-                                            basic_pred_name = f"{curr_pred.name}_{i}({','.join(predicate_vars)})"
-                                            assert "N" in basic_pred_name, "Should have N"
-                                            basic_pred_name = basic_pred_name.replace('N', str(loc_ent))
-                                            local_name = gen_pretty_pred_name(basic_pred_name, type_comb, \
-                                                                            quantifier, neg)
-                                            logging.info(f" ++++{local_name}++++")
-                                            typed_quantifier.append((local_name))
-                                            learned_ae_vector = distill_learned_ae_vector(data_results, \
-                                                    pred_config['gumbel_temp'], pred_config['decision_b'], pred_model, curr_pred, local_ent_idx, \
-                                                    self.ae_row_names_dict, copy.deepcopy(self._node_feature_to_index), \
-                                                        CFG.device, neg, quantifier, type_comb_idx)
-                                            # no target vector will use entropy
-                                            learned_guidance = compute_guidance_vector(learned_ae_vector)
-                                            logging.info(f"Guidance Score: {learned_guidance}")
-                                            if learned_guidance.sum() < quantified_threshold:
-                                                final_ae_vec = prob_three2two(learned_ae_vector)
-                                                logging.info(f"Checking AP Vector for {local_name}...")
-                                                precond_pass = check_learned_ap_vector(data_results, \
-                                                pred_config['gumbel_temp'], pred_config['decision_b'], pred_model, curr_pred, local_ent_idx, \
-                                                self.ae_row_names_dict, final_ae_vec, copy.deepcopy(self._node_feature_to_index),
-                                                CFG.device, neg, quantifier, type_comb_idx, thresh=CFG.precond_thresh)
-                                                if (final_ae_vec==0).all():
-                                                    logging.info(f"AE Vector is all zeros, skip...")
-                                                    precond_pass = False
-                                                if precond_pass:
-                                                    logging.info(f"Passed!!! Add to the final list.")
-                                                    self.learned_ae_pred_info[curr_pred]['ent_idx'][i].append(local_ent_idx)
-                                                    self.learned_ae_pred_info[curr_pred]['ae_vecs'][i].append(final_ae_vec.clone())
-                                                    self.learned_ae_pred_info[curr_pred]['scores'][i].append(learned_guidance.clone())
-                                                    quantifier_str = local_name.split(', ')[0]
-                                                    neg_str = local_name.split(', ')[1].split('-')[0]
-                                                    basic_pred_str = local_name.split(', ')[1].split('-')[1]
-                                                    self.learned_ae_pred_info[curr_pred]['quantifiers'][i].append((quantifier_str, \
-                                                                                    neg_str, basic_pred_str))
-                    logging.info(f"Savings Negated / Quantified version for {curr_pred.name}...")
-                    with open(self.learned_ae_pred_info[curr_pred]['model_weights'][i].replace("_model_good.pth", "quantified.pkl"), 'wb') as f:
-                        pkl.dump({'ent_idx': self.learned_ae_pred_info[curr_pred]['ent_idx'][i],
-                                  'ae_vecs': self.learned_ae_pred_info[curr_pred]['ae_vecs'][i],
-                                  'scores': self.learned_ae_pred_info[curr_pred]['scores'][i],
-                                  'quantifiers': self.learned_ae_pred_info[curr_pred]['quantifiers'][i]}, f)
+                # if CFG.neupi_w_negation or CFG.neupi_w_quantifiers:
+                #     if curr_pred.arity == 1:
+                #         logging.info("Skipping Negated / Quantified version for unary predicate...")
+                #         # only support binary + quantifier now
+                #         continue
+                #     if os.path.exists(self.learned_ae_pred_info[curr_pred]['model_weights'][i].replace("_model_good.pth", "quantified.pkl")):
+                #         logging.info("Negated / Quantified version already exists, loading...")
+                #         with open(self.learned_ae_pred_info[curr_pred]['model_weights'][i].replace("_model_good.pth", "quantified.pkl"), 'rb') as f:
+                #             quantified_info = pkl.load(f)
+                #         for m in range(1, len(quantified_info['ent_idx'])):
+                #             logging.info(f"Negated / Quantified version {m}...")
+                #             logging.info(f"Quantifier: {quantified_info['quantifiers'][m]}")
+                #             logging.info(f"AE Vector {m}: {two2one(quantified_info['ae_vecs'][m])}")
+                #             # skipping the first one, as it is the original one
+                #             self.learned_ae_pred_info[curr_pred]['ent_idx'][i].append(quantified_info['ent_idx'][m])
+                #             self.learned_ae_pred_info[curr_pred]['ae_vecs'][i].append(quantified_info['ae_vecs'][m])
+                #             self.learned_ae_pred_info[curr_pred]['scores'][i].append(quantified_info['scores'][m])
+                #             self.learned_ae_pred_info[curr_pred]['quantifiers'][i].append(quantified_info['quantifiers'][m])
+                #         continue
+                #     logging.info("Checking Negated / Quantified version...")
+                #     curr_pred_types = [types.name for types in curr_pred.types]
+                #     typed_quantifier = []
+                #     w_negation = [False] if not CFG.neupi_w_negation else [True, False]
+                #     quantifiers = [''] if not CFG.neupi_w_quantifiers else ['', 'ForAll', 'Exists']
+                #     pred_model_weights = torch.load(self.learned_ae_pred_info[curr_pred]['model_weights'][i])
+                #     pred_model = setup_neupi_mlp_net(example_dataset,
+                #                 curr_pred.arity,
+                #                 pred_config['architecture'],
+                #                 self._node_feature_to_index,
+                #                 self._edge_feature_to_index)
+                #     pred_model.load_state_dict(pred_model_weights)
+                #     if CFG.neupi_quantify_dataset != 1.0:
+                #         logging.info(f"Quantifying Dataset: {CFG.neupi_quantify_dataset}")
+                #         self._rng.shuffle(data)
+                #     quantify_data = data[:int(len(data) * CFG.neupi_quantify_dataset)]
+                #     _, val_dataset = self.gen_graph_data(quantify_data, curr_pred, ent_idx, \
+                #     curr_ae_vector.clone())
+                #     val_dataloader = DataLoader(val_dataset,
+                #         batch_size=1, # always use 1 for memory
+                #         shuffle=False,
+                #         num_workers=4,
+                #         pin_memory=False,
+                #         collate_fn=action_graph_batch_collate)
+                #     # just inference once and use the outputs
+                #     logging.info("Inference for the current predicate model...")
+                #     data_results = inferece_dataloader(val_dataloader, pred_model, \
+                #                                        pred_config['gumbel_temp'], \
+                #                                        pred_config['decision_b'], \
+                #                                        CFG.device)
+                #     quantified_threshold = pred_config['quantified_guidance_thresh'] if "quantified_guidance_thresh" \
+                #                             in pred_config else pred_config['guidance_thresh']
+                #     for neg in w_negation:
+                #         logging.info(f"Negation: {neg}")
+                #         for quantifier in quantifiers:
+                #             if quantifier == '':
+                #                 local_ent_idx = ent_idx
+                #                 logging.info(f"No Quantifier, using the original ent idx: {local_ent_idx}")
+                #                 if not neg:
+                #                     continue
+                #                 type_comb = []
+                #                 local_name = gen_pretty_pred_name(basic_pred_name, type_comb, \
+                #                                                 quantifier, neg)
+                #                 logging.info(f" ++++{local_name}++++")
+                #                 typed_quantifier.append((local_name))
+                #                 learned_ae_vector = distill_learned_ae_vector(data_results, \
+                #                     pred_config['gumbel_temp'], pred_config['decision_b'], pred_model, curr_pred, local_ent_idx, \
+                #                     self.ae_row_names_dict, copy.deepcopy(self._node_feature_to_index), \
+                #                         CFG.device, neg, quantifier, type_comb)
+                #                 # no target vector will use entropy
+                #                 learned_guidance = compute_guidance_vector(learned_ae_vector)
+                #                 logging.info(f"Guidance Score: {learned_guidance}")
+                #                 if learned_guidance.sum() < quantified_threshold:
+                #                     final_ae_vec = prob_three2two(learned_ae_vector)
+                #                     if (final_ae_vec==0).all():
+                #                         logging.info(f"AE Vector is all zeros, skip...")
+                #                         continue
+                #                     logging.info(f"Checking AP Vector for {local_name}...")
+                #                     precond_pass = check_learned_ap_vector(data_results, \
+                #                     pred_config['gumbel_temp'], pred_config['decision_b'], predicate_neural_model, curr_pred, local_ent_idx, \
+                #                         self.ae_row_names_dict, final_ae_vec, copy.deepcopy(self._node_feature_to_index), \
+                #                         CFG.device, neg, quantifier, type_comb, thresh=CFG.precond_thresh)
+                #                     if precond_pass:
+                #                         logging.info(f"Passed!!! Add to the final list.")
+                #                         self.learned_ae_pred_info[curr_pred]['ent_idx'][i].append(local_ent_idx)
+                #                         self.learned_ae_pred_info[curr_pred]['ae_vecs'][i].append(final_ae_vec.clone())
+                #                         self.learned_ae_pred_info[curr_pred]['scores'][i].append(learned_guidance.clone())
+                #                         quantifier_str = local_name.split(', ')[0]
+                #                         neg_str = local_name.split(', ')[1].split('-')[0]
+                #                         basic_pred_str = local_name.split(', ')[1].split('-')[1]
+                #                         self.learned_ae_pred_info[curr_pred]['quantifiers'][i].append((quantifier_str, \
+                #                                                         neg_str, basic_pred_str))
+                #             else:
+                #                 # use idx, instead of content, to handel same name type
+                #                 combinded_types_idx = []
+                #                 curr_pred_types_ids = list(range(len(curr_pred_types)))
+                #                 for r in range(1, len(curr_pred_types) + 1):
+                #                     combinded_types_idx += list(itertools.combinations(curr_pred_types_ids, r))
+                #                 for type_comb_idx in combinded_types_idx:
+                #                     # who to quantify
+                #                     type_comb = [curr_pred_types[t] for t in type_comb_idx]
+                #                     predicate_vars = []
+                #                     possible_ent_idx = []
+                #                     for k, t in enumerate(curr_pred.types):
+                #                         if k in type_comb_idx:
+                #                             # this type is in quantifier, no id needed
+                #                             predicate_vars.append(f"?{t.name[:3].lower()}")
+                #                         else:
+                #                             # This type is not quantified, need to specify the ent id in operator
+                #                             # ent_idx is the index of the operated object, in the operator
+                #                             predicate_vars.append(f"?{t.name[:3].lower()}N")
+                #                             possible_ent_idx = list(range(self._max_type_id[t.name]))
+                #                     if len(possible_ent_idx) == 0:
+                #                         logging.info(f"The unquantified type has no choice")
+                #                         basic_pred_name = f"{curr_pred.name}_{i}({','.join(predicate_vars)})"
+                #                         # reset the local ent idx, as this is a new predicate
+                #                         local_ent_idx = []
+                #                         assert "N" not in basic_pred_name, "Should not have N"
+                #                         local_name = gen_pretty_pred_name(basic_pred_name, type_comb, \
+                #                                                         quantifier, neg)
+                #                         logging.info(f" ++++{local_name}++++")
+                #                         typed_quantifier.append((local_name))
+                #                         learned_ae_vector = distill_learned_ae_vector(data_results, \
+                #                                 pred_config['gumbel_temp'], pred_config['decision_b'], pred_model, curr_pred, local_ent_idx, \
+                #                                 self.ae_row_names_dict, copy.deepcopy(self._node_feature_to_index), \
+                #                                     CFG.device, neg, quantifier, type_comb_idx)
+                #                         # no target vector will use entropy
+                #                         learned_guidance = compute_guidance_vector(learned_ae_vector)
+                #                         logging.info(f"Guidance Score: {learned_guidance}")
+                #                         if learned_guidance.sum() < quantified_threshold:
+                #                             final_ae_vec = prob_three2two(learned_ae_vector)
+                #                             logging.info(f"Checking AP Vector for {local_name}...")
+                #                             precond_pass = check_learned_ap_vector(data_results, \
+                #                             pred_config['gumbel_temp'], pred_config['decision_b'], predicate_neural_model, curr_pred, local_ent_idx, \
+                #                             self.ae_row_names_dict, final_ae_vec, copy.deepcopy(self._node_feature_to_index),
+                #                             CFG.device, neg, quantifier, type_comb_idx, thresh=CFG.precond_thresh)
+                #                             if (final_ae_vec==0).all():
+                #                                 logging.info(f"AE Vector is all zeros, skip...")
+                #                                 precond_pass = False
+                #                             if precond_pass:
+                #                                 logging.info(f"Passed!!! Add to the final list.")
+                #                                 self.learned_ae_pred_info[curr_pred]['ent_idx'][i].append(local_ent_idx)
+                #                                 self.learned_ae_pred_info[curr_pred]['ae_vecs'][i].append(final_ae_vec.clone())
+                #                                 self.learned_ae_pred_info[curr_pred]['scores'][i].append(learned_guidance.clone())
+                #                                 quantifier_str = local_name.split(', ')[0]
+                #                                 neg_str = local_name.split(', ')[1].split('-')[0]
+                #                                 basic_pred_str = local_name.split(', ')[1].split('-')[1]
+                #                                 self.learned_ae_pred_info[curr_pred]['quantifiers'][i].append((quantifier_str, \
+                #                                                                 neg_str, basic_pred_str))
+                #                     else:
+                #                         logging.info(f"The unquantified type has >= one choice, checking each one of them...")
+                #                         for loc_ent in possible_ent_idx:
+                #                             # reset the local ent idx, as this is a new predicate
+                #                             # note that ent idx is the index in the action
+                #                             local_ent_idx = [loc_ent]
+                #                             basic_pred_name = f"{curr_pred.name}_{i}({','.join(predicate_vars)})"
+                #                             assert "N" in basic_pred_name, "Should have N"
+                #                             basic_pred_name = basic_pred_name.replace('N', str(loc_ent))
+                #                             local_name = gen_pretty_pred_name(basic_pred_name, type_comb, \
+                #                                                             quantifier, neg)
+                #                             logging.info(f" ++++{local_name}++++")
+                #                             typed_quantifier.append((local_name))
+                #                             learned_ae_vector = distill_learned_ae_vector(data_results, \
+                #                                     pred_config['gumbel_temp'], pred_config['decision_b'], pred_model, curr_pred, local_ent_idx, \
+                #                                     self.ae_row_names_dict, copy.deepcopy(self._node_feature_to_index), \
+                #                                         CFG.device, neg, quantifier, type_comb_idx)
+                #                             # no target vector will use entropy
+                #                             learned_guidance = compute_guidance_vector(learned_ae_vector)
+                #                             logging.info(f"Guidance Score: {learned_guidance}")
+                #                             if learned_guidance.sum() < quantified_threshold:
+                #                                 final_ae_vec = prob_three2two(learned_ae_vector)
+                #                                 logging.info(f"Checking AP Vector for {local_name}...")
+                #                                 precond_pass = check_learned_ap_vector(data_results, \
+                #                                 pred_config['gumbel_temp'], pred_config['decision_b'], pred_model, curr_pred, local_ent_idx, \
+                #                                 self.ae_row_names_dict, final_ae_vec, copy.deepcopy(self._node_feature_to_index),
+                #                                 CFG.device, neg, quantifier, type_comb_idx, thresh=CFG.precond_thresh)
+                #                                 if (final_ae_vec==0).all():
+                #                                     logging.info(f"AE Vector is all zeros, skip...")
+                #                                     precond_pass = False
+                #                                 if precond_pass:
+                #                                     logging.info(f"Passed!!! Add to the final list.")
+                #                                     self.learned_ae_pred_info[curr_pred]['ent_idx'][i].append(local_ent_idx)
+                #                                     self.learned_ae_pred_info[curr_pred]['ae_vecs'][i].append(final_ae_vec.clone())
+                #                                     self.learned_ae_pred_info[curr_pred]['scores'][i].append(learned_guidance.clone())
+                #                                     quantifier_str = local_name.split(', ')[0]
+                #                                     neg_str = local_name.split(', ')[1].split('-')[0]
+                #                                     basic_pred_str = local_name.split(', ')[1].split('-')[1]
+                #                                     self.learned_ae_pred_info[curr_pred]['quantifiers'][i].append((quantifier_str, \
+                #                                                                     neg_str, basic_pred_str))
+                #     logging.info(f"Savings Negated / Quantified version for {curr_pred.name}...")
+                #     with open(self.learned_ae_pred_info[curr_pred]['model_weights'][i].replace("_model_good.pth", "quantified.pkl"), 'wb') as f:
+                #         pkl.dump({'ent_idx': self.learned_ae_pred_info[curr_pred]['ent_idx'][i],
+                #                   'ae_vecs': self.learned_ae_pred_info[curr_pred]['ae_vecs'][i],
+                #                   'scores': self.learned_ae_pred_info[curr_pred]['scores'][i],
+                #                   'quantifiers': self.learned_ae_pred_info[curr_pred]['quantifiers'][i]}, f)
         return trajectories, init_atom_traj
 
     def _get_predicate_identifier(
@@ -2855,3 +2876,52 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
 
 
 
+    def gen_sat_vec_from_seed(self, pred: DummyPredicate, seed_rows: List[torch.Tensor]) -> List[torch.Tensor]:
+        """从 seed_rows 中筛选满足 constraint 的向量，全部返回，不限制数量。"""
+        constraints = self.learned_ae_pred_info[pred]['constraints']
+        width = 1
+        height = len(self.ae_row_names)
+        channels = CFG.neupi_ae_matrix_channel
+
+        def _is_vector_satisfying(vec: torch.Tensor) -> bool:
+            """判断 vec 是否满足所有 constraint。vec shape = [height, channels]"""
+            solver = Solver()
+            entities = [Bool(f'x_{row}_{col}_{channel}') for row in range(height)
+                        for col in range(width) for channel in range(channels)]
+
+            solver = self.add_general_col_constraints(solver, entities, width, height, channels)
+
+            for rule in constraints:
+                if rule[0] == 'position':
+                    row, col, channel, value = rule[1], rule[2], rule[3], rule[4]
+                    assert col == 0
+                    solver.add(entities[row * width * channels + channel] == value)
+                else:
+                    raise ValueError(f'Unknown constraint type: {rule[0]}')
+
+            for row in range(height):
+                for channel in range(channels):
+                    val = vec[row, channel].item()
+                    solver.add(entities[row * width * channels + channel] == (val == 1))
+
+            return solver.check() == sat
+
+        def _row_to_mat(row: torch.Tensor) -> torch.Tensor:
+            """将 seed row 转为 height × channels 的矩阵（add/delete）"""
+            n = row.size(0)
+            mat = torch.zeros((n, channels), dtype=torch.long, device=row.device)
+            mat[:, 0] = (row == 1).long()  # add
+            mat[:, 1] = (row == 2).long()  # delete
+            return mat
+
+        seed_mats = [_row_to_mat(r) for r in seed_rows if (r != 0).any()]
+        sat_vectors = []
+
+        for i, vec in enumerate(seed_mats):
+            if _is_vector_satisfying(vec):
+                logging.info(f"[{i}] ✓ Seed vector satisfies constraint.")
+                sat_vectors.append(vec)
+            else:
+                logging.info(f"[{i}] ✗ Seed vector does NOT satisfy constraint.")
+
+        return sat_vectors

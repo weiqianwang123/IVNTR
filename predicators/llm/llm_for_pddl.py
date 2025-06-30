@@ -162,7 +162,7 @@ class PDDLEffectVectorGenerator():
       
         # prompts
         self.system_prompt = self.COMPLETION_GUIDE+self._demo_prompt
-        init_preds, goal_info, precond_info = load_initial_predicates("/home/qianwei/IVNTR/predicators/config/satellites/pddl.json")
+        init_preds, goal_info, precond_info = load_initial_predicates("/home/qianwei/IVNTR/predicators/config/blocks_onclear/pddl.json")
 
         self._domain_skeleton = build_pddl_skeleton(
                 options=self._orig_options,
@@ -210,6 +210,7 @@ class PDDLEffectVectorGenerator():
                 continue
 
             mat, new_preds, pred2types = self._extract_vector_from_pddl(filled)
+            print("new_preds:", new_preds)
             if mat is not None:
                 # build mapping: target_pred → list[row_tensor]
                 result: "OrderedDict[Predicate, List[torch.Tensor]]" = OrderedDict()
@@ -269,23 +270,30 @@ class PDDLEffectVectorGenerator():
         """
         # ---------- ① parse (:predicates ...) ----------
         pred_block = re.search(r"\(:predicates(.*?)\)\s*\)", txt, re.S | re.I)
+      
         if not pred_block:
             return None, [], {}
 
         pred2types: Dict[str, List[str]] = {}
         for line in pred_block.group(1).splitlines():
             s = line.strip()
+            if not s.endswith(")"):
+                s += ")"
+
+            print(f"Parsing predicate line: {s}")
             if not s or s.startswith(";"):
                 continue
             # allow zero-arity predicates
             m = re.match(r"\(\s*([a-zA-Z0-9_]+)(?:\s+(.*?))?\)", s)
             if not m:
+                print(f"Failed to parse predicate line: {s}")
                 continue
             name, rest = m.groups()
             rest = rest or ""
             types = re.findall(r"-\s*([a-zA-Z0-9_]+)", rest)
             pred2types[_pddl_name(name)] = [_pddl_name(t) for t in types]
 
+        print("pred2types:", pred2types)
         # ---------- ② drop initial predicates ----------
         new_preds = [p for p in pred2types if p not in self._initial_pred_set]
         if not new_preds:
