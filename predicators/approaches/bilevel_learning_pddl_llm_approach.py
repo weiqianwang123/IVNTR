@@ -1897,7 +1897,7 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                     os.rename(saved_guidance_path, saved_guidance_path.replace("_guidance", "_guidance_good"))
                     saved_ae_vector_path = saved_model_path.replace("_model", "_ae_vector")
                     os.rename(saved_ae_vector_path, saved_ae_vector_path.replace("_ae_vector", "_ae_vector_good"))
-                # 4.3 Check the Negated / Quantified version
+                # # 4.3 Check the Negated / Quantified version
                 # if CFG.neupi_w_negation or CFG.neupi_w_quantifiers:
                 #     if curr_pred.arity == 1:
                 #         logging.info("Skipping Negated / Quantified version for unary predicate...")

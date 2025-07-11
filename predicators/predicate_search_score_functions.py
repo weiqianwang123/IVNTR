@@ -117,6 +117,8 @@ class _PredicateSearchScoreFunction(abc.ABC):
         total_pred_cost = sum(self._candidates[p]
                               for p in candidate_predicates)
         return CFG.grammar_search_pred_complexity_weight * total_pred_cost
+    
+
 
 @dataclass(frozen=True, eq=False, repr=False)
 class _OperatorBeliefScoreFunction(abc.ABC):
@@ -126,6 +128,122 @@ class _OperatorBeliefScoreFunction(abc.ABC):
     _row_names: List[ParameterizedOption] # all of the option names
     metric_name: str # num_nodes_created or num_nodes_expanded
 
+    def evaluate_and_get_plans(
+            self,
+            candidate_ae_matrix: np.ndarray,
+            candidate_predicates: List[Predicate],
+            predicates_ent_idx: List[List[int]],
+            strips_learner: str,
+            gt_predicates: Optional[Set[Predicate]] = None,
+            max_traj_used: int = -1,
+        ) -> Tuple[List[List[str]]]:
+        """Similar to `evaluate`, but additionally returns the three best
+        skeleton plans (by node-metric) and an optional baseline plan learned
+        with `gt_predicates`.
+
+        Returns
+        -------
+        best_score : float
+            The minimal node count among all skeletons generated with the
+            candidate predicates.
+        top3_plans : List[List[str]]
+            Up to three skeletons (as operator-name lists) sorted by score.
+        baseline_plan : Optional[List[str]]
+            Best skeleton obtained with the ground-truth predicate set.
+            `None` if `gt_predicates` is not provided.
+        """
+        # ---------- 1. Learn PNADs exactly like in evaluate ----------
+        pruned_atom_data = utils.prune_ground_atom_dataset(
+            self._atom_dataset, set(candidate_predicates))
+        segmented_trajs = [
+            segment_trajectory(ll_traj, set(candidate_predicates), atom_seq)
+            for (ll_traj, atom_seq) in pruned_atom_data
+        ]
+        low_level_trajs = [ll_traj for ll_traj, _ in pruned_atom_data]
+        candidate_predicates = candidate_predicates[:len(predicates_ent_idx)]
+        operator_belief = {
+            'row_names': self._row_names,
+            'col_names': candidate_predicates,
+            'col_ent_idx': predicates_ent_idx,
+            'ae_matrix': candidate_ae_matrix
+        }
+        pnads = learn_strips_operators(
+            low_level_trajs,
+            self._train_tasks,
+            set(candidate_predicates),
+            segmented_trajs,
+            verify_harmlessness=False,
+            verbose=True,
+            annotations=None,
+            operator_belief=operator_belief if 'belief' in strips_learner else None,
+        )
+        if not pnads:
+            return float('inf'), [], None
+
+        strips_ops  = [p.op          for p in pnads]
+        option_specs = [p.option_spec for p in pnads]
+        dummy_nsrts = utils.ops_and_specs_to_dummy_nsrts(strips_ops, option_specs)
+
+        # ---------- 2. Enumerate skeletons, keep global best ----------
+        scored_plans: List[Tuple[float, List[str]]] = []
+        ub = CFG.neupi_aaai_expected_nodes_upper_bound
+        scored: List[Tuple[float, int, List[str]]] = []  # (score, demo_idx, plan)
+        for demo_idx, (ll_traj, seg_traj) in enumerate(zip(
+            low_level_trajs[:max_traj_used],
+            segmented_trajs[:max_traj_used])):
+            if not ll_traj.is_demo:
+                continue
+            init_atoms = utils.segment_trajectory_to_atoms_sequence(seg_traj)[0]
+            goal       = self._train_tasks[ll_traj.train_task_idx].goal
+            objects    = set(ll_traj.states[0])
+            ground_nsrts, reachable_atoms = task_plan_grounding(
+                init_atoms, objects, dummy_nsrts,
+                allow_noops=CFG.grammar_search_expected_nodes_allow_noops)
+            heuristic = utils.create_task_planning_heuristic(
+                CFG.sesame_task_planning_heuristic, init_atoms, goal,
+                ground_nsrts, set(candidate_predicates), objects)
+
+            generator = task_plan(init_atoms, goal, ground_nsrts,
+                                reachable_atoms, heuristic, CFG.seed,
+                                CFG.grammar_search_task_planning_timeout,
+                                CFG.sesame_max_skeletons_optimized,
+                                use_visited_state_set=False)
+            try:
+                def simplify_action_string(ground_nsrt) -> str:
+                    """将复杂的 SingletonParameterizedOption 动作格式简化为可读格式。"""
+                    
+                    name = ground_nsrt.option.name
+                    obj_names = [str(o).split(":")[0] for o in ground_nsrt.option_objs]  # 去掉 ":type"
+                    return f"{name}({', '.join(obj_names)})"
+
+                for skeleton, _, metrics in generator:
+                    # skeleton 是一个 GroundNSRT 列表 / 元组
+                    score = metrics[self.metric_name]
+
+                    # 提取 operator 名称（兼容 GroundNSRT / pnad.op 等不同字段）
+                    ops = []
+                    for step in skeleton:
+                       ops.append(simplify_action_string(step))
+
+                    scored.append((score, ops))
+        
+                    # logging.info(
+                    #     "Demo %d | skeleton length=%d | score=%.1f | plan: %s",
+                    #     demo_idx, len(ops), score, " ➜ ".join(ops)
+                    # )
+
+
+            except (PlanningTimeout, PlanningFailure):
+                scored.append((CFG.neupi_aaai_expected_nodes_upper_bound,demo_idx, []))
+
+        # 排序并截取前三
+        if not scored:
+            return []
+
+        # larger score = worse → sort descending, keep top-3
+        worst3 = sorted(scored, key=lambda x: -x[0])[:3]
+        # drop the score before returning
+        return [(demo_idx, plan) for demo_idx, plan in worst3]
     def evaluate(self, candidate_ae_matrix: np.ndarray, \
                 candidate_predicates: List[Predicate], \
                 predicates_ent_idx: List[List[int]], \
