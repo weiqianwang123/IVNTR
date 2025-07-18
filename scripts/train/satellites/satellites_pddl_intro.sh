@@ -8,7 +8,7 @@ do
     # Record start time
     start_time=$(date +%s)
     # low-level sampling is very hard for this environment
-    if python3 predicators/main.py --env satellites --approach ivntr-pddl-loop \
+    if python3 predicators/main.py --env satellites --approach ivntr-pddl-intro \
         --seed $seed --offline_data_method "demo" \
         --disable_harmlessness_check True \
         --excluded_predicates "ViewClear,IsCalibrated,HasChemX,HasChemY,Sees" \
@@ -19,7 +19,7 @@ do
         --neupi_do_normalization False \
         --num_train_tasks 500 \
         --load_data \
-        --domain_aaai_thresh 350000 \
+        --domain_aaai_thresh 300000 \
         --neupi_entropy_w 0.5 \
         --neupi_loss_w 0.5 \
         --neupi_equ_dataset 1.0 \
@@ -27,9 +27,9 @@ do
         --bilevel_plan_without_sim False \
         --sesame_max_samples_per_step 30 \
         --timeout 5 \
-        --approach_dir "saved_approaches/demo/satellites/ivntr_llm_pddl_loop_$seed" \
-        --neupi_save_path "saved_approaches/demo/satellites/ivntr_llm_pddl_loop_$seed" \
-        --log_file /home/qianwei/IVNTR/logs/satellites/ivntr_ood_llm_pddl_loop_$seed.log; then
+        --approach_dir "saved_approaches/demo/satellites/ivntr_llm_pddl_intro_$seed" \
+        --neupi_save_path "saved_approaches/demo/satellites/ivntr_llm_pddl_intro_$seed" \
+        --log_file /home/qianwei/IVNTR/logs/satellites/ivntr_ood_llm_pddl_intro_$seed.log; then
         echo "Seed $seed completed successfully."
     else
         echo "Seed $seed encountered an error."

@@ -18,6 +18,7 @@ do
         --domain_sampler_data_filter "none" \
         --sesame_task_planner "fdsat" \
         --num_train_tasks 500 \
+        --load_data \
         --timeout 5 \
         --neupi_do_normalization True \
         --neupi_entropy_w 0.0 \

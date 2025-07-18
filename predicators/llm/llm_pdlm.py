@@ -119,10 +119,7 @@ class PDDLEffectVectorLoopGenerator():
     3,Do not add/remove actions.
     4,Return the complete PDDL only, no other text.Do not return the same PDDL as the input.
     5,All the preconditon only predicate is already given in the PDDL, you need to add those preidcates with effects.
-    6,When the bad history is given, you need to fix the bad history in the PDDL.
-        Those predicates in bad history have 2 possible reasons :
-            1,Object type is not correct.if it is binary,try less object.If it is unary,try more objects.
-            2,The effect to these predicate is not correct in PDDL.Think carefully about how will each action Add or Delete the predicate.
+   
     
     """
 
@@ -173,7 +170,7 @@ class PDDLEffectVectorLoopGenerator():
         # prompts
         self.system_prompt = self.COMPLETION_GUIDE+self._demo_prompt
         
-        init_preds, goal_info, precond_info = load_initial_predicates("/home/qianwei/IVNTR/predicators/config/blocks_onclear/pddl.json")
+        init_preds, goal_info, precond_info = load_initial_predicates("/data2/datasets/qianweiw/IVNTR/predicators/config/tools-pcd/pddl.json")
 
         self._domain_skeleton = build_pddl_skeleton(
                 options=self._orig_options,
@@ -183,8 +180,8 @@ class PDDLEffectVectorLoopGenerator():
                 precond_info=precond_info,
         )
         self._initial_pred_set = {p.name for p in init_preds}
-        # print(self.system_prompt)
-        # print(self._domain_skeleton)
+        print(self.system_prompt)
+        print(self._domain_skeleton)
 
 
         logging.info("System prompt built:\n%s", self.system_prompt)
@@ -423,23 +420,6 @@ class PDDLEffectVectorLoopGenerator():
                 if re.search(rf"\(not\s+\(\s*{sym}\b", effect):
                     mat[row, col] = 2                     # delete
 
-        # act_pat = re.compile(
-        #     r"\(:action\s+([^\s]+).*?:effect\s*\((?:and\s*)?"
-        #     r"(?P<eff>(?:[^()]|\([^()]*\))*)\)\s*\)",
-        #     re.S | re.I,
-        # )
-
-        # for act_name, eff in act_pat.findall(txt):
-        #     col = act2idx.get(_pddl_name(act_name))
-        #     if col is None:
-        #         continue
-        #     for row, p in enumerate(new_preds):
-        #         sym = re.escape(p)
-        #         if re.search(rf"\(\s*{sym}\b", eff):
-        #             mat[row, col] = 1
-        #         if re.search(rf"\(not\s+\(\s*{sym}\b", eff):
-        #             mat[row, col] = 2
-
         if not (mat != 0).any():
             return None, [], {}
 
@@ -528,4 +508,3 @@ if __name__ == "__main__":
     # Second vector (LLM now sees the (vector,loss) table).
     v2 = gen.generate()
     print("v2 =", v2)
-
