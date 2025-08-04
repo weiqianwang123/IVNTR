@@ -28,6 +28,7 @@ tests/_fake_results
 sas_plan
 .env.local
 Real-World-Data
+*.pth
 # Jetbrains IDEs
 .idea/
 wandb/
