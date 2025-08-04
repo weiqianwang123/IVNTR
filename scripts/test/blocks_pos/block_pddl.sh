@@ -4,25 +4,36 @@ export CUBLAS_WORKSPACE_CONFIG=:4096:8
 
 for seed in 0 1 2 3 4
 do
-    echo "Running Seed $seed --------------------------------------"
+    echo "Running Seed 0 --------------------------------------"
     # Record start time
     start_time=$(date +%s)
     # low-level sampling is very hard for this environment
-    if python3 predicators/main.py --env blocks_onclear --approach transformer_nsrt_policy \
+    if python3 predicators/main.py --env blocks_onclear --approach ivntr-pddl-llm \
         --seed $seed --offline_data_method "demo" \
+        --disable_harmlessness_check True \
         --excluded_predicates "On,OnTable,GripperOpen,Holding,Clear" \
-        --num_train_tasks 500 \
+        --neupi_pred_config "predicators/config/blocks_onclear/pred.yaml" \
+        --neupi_gt_ae_matrix False \
         --exclude_domain_feat "none" \
         --domain_sampler_data_filter "none" \
+        --sesame_task_planner "fdsat" \
+        --num_train_tasks 500 \
+        --load_approach \
         --load_data \
-        --gnn_layer_size 128 \
-        --gnn_batch_size 512 \
-        --gnn_option_policy_solve_with_shooting True \
+        --load_neupi_from_json True \
         --timeout 5 \
-        --gnn_do_normalization True \
-        --approach_dir "saved_approaches/final/blocks_pos/tf_policy_$seed" \
-        --ivntr_nsrt_path saved_approaches/final/blocks_pos/ivntr_${seed}/blocks_onclear__ivntr__${seed}__On,OnTable,GripperOpen,Holding,Clear___aesuperv_False__.saved.neupi_info \
-        --log_file logs/blocks_pos/tf_policy_ood_$seed.log; then
+        --neupi_do_normalization True \
+        --neupi_entropy_w 0.0 \
+        --neupi_loss_w 1.0 \
+        --neupi_equ_dataset 0.05 \
+        --neupi_pred_search_dataset 1.0 \
+        --bilevel_plan_without_sim False \
+        --load_neupi_from_json False \
+        --execution_monitor expected_atoms \
+        --domain_aaai_thresh 6000000 \
+        --approach_dir "saved_approaches/final/blocks_pos/ivntr_pddl_$seed" \
+        --neupi_load_pretrained "saved_approaches/final/blocks_pos/ivntr_pddl_$seed" \
+        --log_file logs/blocks_pos/ivntr_ood_pddl_test_$seed.log; then
         echo "Seed $seed completed successfully."
     else
         echo "Seed $seed encountered an error."
@@ -45,23 +56,30 @@ do
     # Record start time
     start_time=$(date +%s)
     # low-level sampling is very hard for this environment
-    if python3 predicators/main.py --env blocks_onclear --approach transformer_nsrt_policy \
+    if python3 predicators/main.py --env blocks_onclear --approach ivntr-pddl-llm \
         --seed $seed --offline_data_method "demo" \
+        --disable_harmlessness_check True \
         --excluded_predicates "On,OnTable,GripperOpen,Holding,Clear" \
+        --neupi_pred_config "predicators/config/blocks_onclear/pred.yaml" \
+        --neupi_gt_ae_matrix False \
+        --sesame_task_planner "fdsat" \
         --num_train_tasks 500 \
+        --load_data \
         --exclude_domain_feat "none" \
         --domain_sampler_data_filter "none" \
-        --load_data \
-        --gnn_layer_size 128 \
-        --gnn_batch_size 512 \
-        --gnn_do_normalization True \
-        --gnn_option_policy_solve_with_shooting True \
+        --neupi_do_normalization True \
+        --neupi_entropy_w 0.5 \
+        --neupi_loss_w 0.5 \
+        --neupi_equ_dataset 1.0 \
+        --neupi_pred_search_dataset 1.0 \
+        --bilevel_plan_without_sim False \
+        --execution_monitor expected_atoms \
         --load_approach \
-        --timeout 5 \
+        --load_neupi_from_json False \
         --in_domain_test True \
-        --approach_dir "saved_approaches/final/blocks_pos/tf_policy_$seed" \
-        --ivntr_nsrt_path saved_approaches/final/blocks_pos/ivntr_${seed}/blocks_onclear__ivntr__${seed}__On,OnTable,GripperOpen,Holding,Clear___aesuperv_False__.saved.neupi_info \
-        --log_file logs/blocks_pos/tf_policy_in_domain_$seed.log; then
+        --timeout 5 \
+        --approach_dir "saved_approaches/final/blocks_pos/ivntr_pddl_$seed" \
+        --log_file logs/blocks_pos/ivntr_indomain_pddl_test_$seed.log; then
         echo "Seed $seed completed successfully."
     else
         echo "Seed $seed encountered an error."

@@ -8,11 +8,12 @@ do
     # Record start time
     start_time=$(date +%s)
     # low-level sampling is very hard for this environment
-    if python3 predicators/main.py --env satellites --approach ivntr \
+    if python3 predicators/main.py --env satellites --approach ivntr-pddl-llm \
         --seed $seed --offline_data_method "demo" \
         --disable_harmlessness_check True \
         --excluded_predicates "ViewClear,IsCalibrated,HasChemX,HasChemY,Sees" \
         --neupi_pred_config "predicators/config/satellites/pred.yaml" \
+        --load_data \
         --neupi_gt_ae_matrix False \
         --sesame_task_planner "fdsat" \
         --exclude_domain_feat "none" \
@@ -26,12 +27,11 @@ do
         --bilevel_plan_without_sim False \
         --sesame_max_samples_per_step 30 \
         --load_approach \
-        --load_data \
         --load_neupi_from_json False \
         --timeout 5 \
-        --approach_dir "saved_approaches/demo/satellites/ivntr_$seed" \
-        --neupi_save_path "saved_approaches/demo/satellites/ivntr_$seed" \
-        --log_file logs/satellites/ivntr_ood_test_$seed.log; then
+        --approach_dir "saved_approaches/demo/satellites/ivntr_llm_pddl_$seed" \
+        --neupi_save_path "saved_approaches/demo/satellites/ivntr_llm_pddl_$seed" \
+        --log_file logs/satellites/ivntr_ood_test_llm_pddl_$seed.log; then
         echo "Seed $seed completed successfully."
     else
         echo "Seed $seed encountered an error."
@@ -54,12 +54,13 @@ do
     # Record start time
     start_time=$(date +%s)
     # low-level sampling is very hard for this environment
-    if python3 predicators/main.py --env satellites --approach ivntr \
+    if python3 predicators/main.py --env satellites --approach ivntr-pddl-llm \
         --seed $seed --offline_data_method "demo" \
         --disable_harmlessness_check True \
         --excluded_predicates "ViewClear,IsCalibrated,HasChemX,HasChemY,Sees" \
         --neupi_pred_config "predicators/config/satellites/pred.yaml" \
         --neupi_gt_ae_matrix False \
+        --load_data \
         --sesame_task_planner "fdsat" \
         --exclude_domain_feat "none" \
         --neupi_do_normalization False \
@@ -75,9 +76,9 @@ do
         --load_neupi_from_json False \
         --in_domain_test True \
         --timeout 5 \
-        --approach_dir "saved_approaches/demo/satellites/ivntr_$seed" \
-        --neupi_load_pretrained "saved_approaches/demo/satellites/ivntr_$seed" \
-        --log_file logs/satellites/ivntr_indomain_$seed.log; then
+        --approach_dir "saved_approaches/demo/satellites/ivntr_llm_pddl_$seed" \
+        --neupi_load_pretrained "saved_approaches/demo/satellites/ivntr_llm_pddl_$seed" \
+        --log_file logs/satellites/ivntr_indomain_llm_pddl_$seed.log; then
         echo "Seed $seed completed successfully."
     else
         echo "Seed $seed encountered an error."

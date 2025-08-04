@@ -714,13 +714,13 @@ class GlobalSettings:
     active_sampler_explorer_skip_perfect = True
     active_sampler_learning_init_cycles_to_pursue_goal = 1
 
-    # grammar search invention parameters
-    grammar_search_use_condition = True
+      # grammar search invention parameters
     grammar_search_grammar_includes_givens = True
     grammar_search_grammar_includes_foralls = True
     grammar_search_grammar_use_diff_features = False
     grammar_search_grammar_use_euclidean_dist = False
     grammar_search_use_handcoded_debug_grammar = False
+    grammar_search_forall_penalty = 1
     grammar_search_pred_selection_approach = "score_optimization"
     grammar_search_pred_clusterer = "oracle"
     grammar_search_true_pos_weight = 10
@@ -749,9 +749,14 @@ class GlobalSettings:
     grammar_search_expected_nodes_backtracking_cost = 1e3
     grammar_search_expected_nodes_allow_noops = True
     grammar_search_classifier_pretty_str_names = ["?x", "?y", "?z"]
-    grammar_search_vlm_atom_proposal_prompt_type = "options_labels_whole_traj"
+    grammar_search_vlm_atom_proposal_prompt_type = \
+        "options_labels_whole_traj_diverse"
     grammar_search_vlm_atom_label_prompt_type = "per_scene_naive"
     grammar_search_vlm_atom_proposal_use_debug = False
+    grammar_search_parallelize_vlm_labeling = True
+    grammar_search_select_all_debug = False
+    grammar_search_invent_geo_predicates_only = False
+    grammar_search_early_termination_heuristic_thresh = 0.0
 
     # grammar search clustering algorithm parameters
     grammar_search_clustering_gmm_num_components = 10
@@ -769,6 +774,7 @@ class GlobalSettings:
     neupi_load_pretrained = ''
     load_neupi_from_json = False
     neupi_pred_config = 'predicators/config/view_plan_hard/pred.yaml'
+    pred_pddl_config = 'predicators/config/satellites/pddl.json'
     neupi_ae_matrix_channel = 2 # 2 is full [non, add, del], 00: non, 01: add, 10: del (no 11). # 1 is add/non
     neupi_super_label = {
         'ignore': -1, # wrong type match for the predicate
@@ -904,6 +910,11 @@ class GlobalSettings:
     # filepath to be used if offline_data_method is set to
     # saved_vlm_img_demos_folder
     vlm_trajs_folder_name = ""
+    # Directory containing real-world demonstration data
+    real_world_demo_dir = "real_world_demos"
+    # Dimensions for multimodal features
+    image_feature_dim = 1024  # Flattened image feature dimension
+    pcd_dim = 1024  # Number of points in point cloud
 
     @classmethod
     def get_arg_specific_settings(cls, args: Dict[str, Any]) -> Dict[str, Any]:

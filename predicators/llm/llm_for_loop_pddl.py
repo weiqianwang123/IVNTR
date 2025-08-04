@@ -111,7 +111,7 @@ def build_pddl_skeleton(
 class PDDLEffectVectorLoopGenerator():
     """Same public API as your original, but works by PDDL completion."""
     COMPLETION_GUIDE = """
-    You are a PDDL expert.  The user will give you a *valid but incomplete* PDDL
+    You are a PDDL expert.  The user will give you a *incomplete* PDDL
     domain.  Your task:
 
     1.The predicate given is not enough for this domain, you need to add more predicates.
@@ -138,6 +138,7 @@ class PDDLEffectVectorLoopGenerator():
         constraint_matrix: Optional[List[List[int]]] = None,
         demo_prompt: Optional[str] = None,
         history_cutoff: int = 25,
+        pddl_config_path: Optional[str] = None,
 
     ) -> None:
         # ---------- bookkeeping ----------
@@ -173,7 +174,7 @@ class PDDLEffectVectorLoopGenerator():
         # prompts
         self.system_prompt = self.COMPLETION_GUIDE+self._demo_prompt
         
-        init_preds, goal_info, precond_info = load_initial_predicates("/home/qianwei/IVNTR/predicators/config/blocks_onclear/pddl.json")
+        init_preds, goal_info, precond_info = load_initial_predicates(pddl_config_path)
 
         self._domain_skeleton = build_pddl_skeleton(
                 options=self._orig_options,
@@ -284,67 +285,7 @@ class PDDLEffectVectorLoopGenerator():
         logging.error("All %d retries exhausted. Returning None.", retries)
         return None
 
-    # # ------------ override the whole generation loop --------------------
-    # def generate(self) -> Optional[torch.Tensor]:
-    #     """Keep querying until the filled PDDL parses, or the retry budget runs out."""
-    #     prompt = self._last_filled_pddl or self._domain_skeleton
-    #     retries = self.cfg.get("retry_attempts", 5)
-    #     tgt2sig = {
-    #     _pddl_name(tp.name): [_pddl_name(t.name) for t in tp.types]
-    #     for tp in self.target_preds
-    #     }
-    #     for attempt in range(1, retries + 1):
-    #         try:
-    #             filled = self._call_llm(prompt)
-    #             print(filled)
-    #             self._last_filled_pddl = filled  # save latest filled PDDL
-
-    #         except Exception as e:
-    #             logging.error("LLM call failed (%s) - attempt %d/%d", e, attempt, retries)
-    #             time.sleep(1.0)
-    #             continue
-
-    #         mat, new_preds, pred2types = self._extract_vector_from_pddl(filled)
-    #         print("new_preds:", new_preds)
-    #         if mat is not None:
-    #             # build mapping: target_pred → list[row_tensor]
-    #             result: "OrderedDict[Predicate, List[torch.Tensor]]" = OrderedDict()
-    #             for tp in self.target_preds:
-    #                 result[tp] = []   # init even if empty
-
-    #             # row index lookup
-    #             for r, p_name in enumerate(new_preds):
-    #                 sig = pred2types.get(p_name, [])
-    #                 for tp in self.target_preds:
-    #                     if sig == tgt2sig[_pddl_name(tp.name)]:
-    #                         result[tp].append(mat[r])
-
-    #             # logging
-    #             logging.info("✓ Parsed PDDL on attempt %d", attempt)
-    #             act_names = [_pddl_name(o.name) for o in self._orig_options]
-    #             for tp, vecs in result.items():
-    #                 if not vecs:
-    #                     logging.info("  • %s → []", tp.name)
-    #                 else:
-    #                     for k, v in enumerate(vecs):
-    #                         logging.info("  • %s (match %d) → %s  (actions=%s)",
-    #                                     tp.name, k, v.tolist(), act_names)
-
-    #             return result    
-
-    #         # ── if we reach here, parse failed → build a nudge and retry ──
-    #         logging.warning("Could not parse LLM PDDL output on attempt %d.", attempt)
-    #         prompt = (
-    #             "⚠️  The previous answer was not a valid filled domain. "
-    #             "Please output **only** the complete PDDL file, starting with "
-    #             "\"(define (domain\" and ending with a matching \")\".\n\n"
-    #             "Here is the original incomplete domain for reference:\n"
-    #             f"{self._domain_skeleton}"
-    #         )
-    #         time.sleep(1.0)
-
-    #     logging.error("All %d retries exhausted. Returning None.", retries)
-    #     return None
+   
 
 
     # ------------ PDDL → vector -----------------------------------------

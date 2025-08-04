@@ -2,7 +2,7 @@ export FD_EXEC_PATH=ext/downward
 export PYTHONHASHSEED=0
 export CUBLAS_WORKSPACE_CONFIG=:4096:8
 
-for seed in 3 4
+for seed in 0 1 2 3 4
 do
     echo "Running Seed $seed --------------------------------------"
     # Record start time
@@ -17,9 +17,9 @@ do
         --gnn_batch_size 512 \
         --gnn_option_policy_solve_with_shooting True \
         --timeout 5 \
-        --ivntr_nsrt_path saved_approaches/final/satellites/ivntr_${seed}/satellites__ivntr__${seed}__ViewClear,IsCalibrated,HasChemX,HasChemY,Sees___aesuperv_False__.saved.neupi_info \
+        --ivntr_nsrt_path saved_approaches/demo/satellites/ivntr_${seed}/satellites__ivntr__${seed}__ViewClear,IsCalibrated,HasChemX,HasChemY,Sees___aesuperv_False__.saved.neupi_info \
         --approach_dir "saved_approaches/final/satellites/gnn_policy_$seed" \
-        --log_file logs/final/satellites/sim/gnn_policy_ood_$seed.log; then
+        --log_file logs/satellites/gnn_policy_ood_$seed.log; then
         echo "Seed $seed completed successfully."
     else
         echo "Seed $seed encountered an error."
@@ -53,9 +53,9 @@ do
         --in_domain_test True \
         --gnn_option_policy_solve_with_shooting True \
         --timeout 5 \
-        --ivntr_nsrt_path saved_approaches/final/satellites/ivntr_${seed}/satellites__ivntr__${seed}__ViewClear,IsCalibrated,HasChemX,HasChemY,Sees___aesuperv_False__.saved.neupi_info \
+        --ivntr_nsrt_path saved_approaches/demo/satellites/ivntr_${seed}/satellites__ivntr__${seed}__ViewClear,IsCalibrated,HasChemX,HasChemY,Sees___aesuperv_False__.saved.neupi_info \
         --approach_dir "saved_approaches/final/satellites/gnn_policy_$seed" \
-        --log_file logs/final/satellites/sim/gnn_policy_in_domain_$seed.log; then
+        --log_file logs/satellites/gnn_policy_in_domain_$seed.log; then
         echo "Seed $seed completed successfully."
     else
         echo "Seed $seed encountered an error."

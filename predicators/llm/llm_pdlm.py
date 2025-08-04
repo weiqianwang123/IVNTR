@@ -108,10 +108,9 @@ def build_pddl_skeleton(
     return domain
 
 
-class PDDLEffectVectorLoopGenerator():
-    """Same public API as your original, but works by PDDL completion."""
+class PDDLEffectVectorGenerator():
     COMPLETION_GUIDE = """
-    You are a PDDL expert.  The user will give you a *valid but incomplete* PDDL
+    You are a PDDL expert.  The user will give you a *incomplete* PDDL
     domain.  Your task:
 
     1.The predicate given is not enough for this domain, you need to add more predicates.
@@ -119,6 +118,7 @@ class PDDLEffectVectorLoopGenerator():
     3,Do not add/remove actions.
     4,Return the complete PDDL only, no other text.Do not return the same PDDL as the input.
     5,All the preconditon only predicate is already given in the PDDL, you need to add those preidcates with effects.
+    6,The name of predicate cannot contain any special characters and underscores, only use alphanumeric characters.
    
     
     """
@@ -135,6 +135,7 @@ class PDDLEffectVectorLoopGenerator():
         constraint_matrix: Optional[List[List[int]]] = None,
         demo_prompt: Optional[str] = None,
         history_cutoff: int = 25,
+        pddl_config_path: Optional[str] = None,
 
     ) -> None:
         # ---------- bookkeeping ----------
@@ -155,7 +156,7 @@ class PDDLEffectVectorLoopGenerator():
         load_dotenv(".env.local")
         self.cfg = {
             "model": "gpt-4o",
-            "temperature": 0.9,
+            "temperature": 0.2,
             "max_tokens": 16384,
             "retry_attempts":20,
             "timeout": 30.0,
@@ -170,7 +171,7 @@ class PDDLEffectVectorLoopGenerator():
         # prompts
         self.system_prompt = self.COMPLETION_GUIDE+self._demo_prompt
         
-        init_preds, goal_info, precond_info = load_initial_predicates("/data2/datasets/qianweiw/IVNTR/predicators/config/tools-pcd/pddl.json")
+        init_preds, goal_info, precond_info = load_initial_predicates(pddl_config_path or "predicators/config/satellites/pddl.json")
 
         self._domain_skeleton = build_pddl_skeleton(
                 options=self._orig_options,
@@ -281,68 +282,7 @@ class PDDLEffectVectorLoopGenerator():
         logging.error("All %d retries exhausted. Returning None.", retries)
         return None
 
-    # # ------------ override the whole generation loop --------------------
-    # def generate(self) -> Optional[torch.Tensor]:
-    #     """Keep querying until the filled PDDL parses, or the retry budget runs out."""
-    #     prompt = self._last_filled_pddl or self._domain_skeleton
-    #     retries = self.cfg.get("retry_attempts", 5)
-    #     tgt2sig = {
-    #     _pddl_name(tp.name): [_pddl_name(t.name) for t in tp.types]
-    #     for tp in self.target_preds
-    #     }
-    #     for attempt in range(1, retries + 1):
-    #         try:
-    #             filled = self._call_llm(prompt)
-    #             print(filled)
-    #             self._last_filled_pddl = filled  # save latest filled PDDL
-
-    #         except Exception as e:
-    #             logging.error("LLM call failed (%s) - attempt %d/%d", e, attempt, retries)
-    #             time.sleep(1.0)
-    #             continue
-
-    #         mat, new_preds, pred2types = self._extract_vector_from_pddl(filled)
-    #         print("new_preds:", new_preds)
-    #         if mat is not None:
-    #             # build mapping: target_pred → list[row_tensor]
-    #             result: "OrderedDict[Predicate, List[torch.Tensor]]" = OrderedDict()
-    #             for tp in self.target_preds:
-    #                 result[tp] = []   # init even if empty
-
-    #             # row index lookup
-    #             for r, p_name in enumerate(new_preds):
-    #                 sig = pred2types.get(p_name, [])
-    #                 for tp in self.target_preds:
-    #                     if sig == tgt2sig[_pddl_name(tp.name)]:
-    #                         result[tp].append(mat[r])
-
-    #             # logging
-    #             logging.info("✓ Parsed PDDL on attempt %d", attempt)
-    #             act_names = [_pddl_name(o.name) for o in self._orig_options]
-    #             for tp, vecs in result.items():
-    #                 if not vecs:
-    #                     logging.info("  • %s → []", tp.name)
-    #                 else:
-    #                     for k, v in enumerate(vecs):
-    #                         logging.info("  • %s (match %d) → %s  (actions=%s)",
-    #                                     tp.name, k, v.tolist(), act_names)
-
-    #             return result    
-
-    #         # ── if we reach here, parse failed → build a nudge and retry ──
-    #         logging.warning("Could not parse LLM PDDL output on attempt %d.", attempt)
-    #         prompt = (
-    #             "⚠️  The previous answer was not a valid filled domain. "
-    #             "Please output **only** the complete PDDL file, starting with "
-    #             "\"(define (domain\" and ending with a matching \")\".\n\n"
-    #             "Here is the original incomplete domain for reference:\n"
-    #             f"{self._domain_skeleton}"
-    #         )
-    #         time.sleep(1.0)
-
-    #     logging.error("All %d retries exhausted. Returning None.", retries)
-    #     return None
-
+    
 
     # ------------ PDDL → vector -----------------------------------------
   
@@ -385,6 +325,7 @@ class PDDLEffectVectorLoopGenerator():
             types = re.findall(r"-\s*([a-zA-Z0-9_]+)", rest)
             pred2types[_pddl_name(name)] = [_pddl_name(t) for t in types]
 
+
         print("pred2types:", pred2types)
         # ---------- ② drop initial predicates ----------
         new_preds = [p for p in pred2types if p not in self._initial_pred_set]
@@ -415,10 +356,12 @@ class PDDLEffectVectorLoopGenerator():
 
             for row, p in enumerate(new_preds):
                 sym = re.escape(p)
-                if re.search(rf"\(\s*{sym}\b", effect):
-                    mat[row, col] = 1                     # add
-                if re.search(rf"\(not\s+\(\s*{sym}\b", effect):
-                    mat[row, col] = 2                     # delete
+                # Match exact predicate add (e.g., (on ...))
+                if re.search(rf"\(\s*{sym}(?:\s|\))", effect):
+                    mat[row, col] = 1  # add
+                # Match exact predicate delete (e.g., (not (on ...)))
+                if re.search(rf"\(not\s+\(\s*{sym}(?:\s|\))", effect):
+                    mat[row, col] = 2  # delete
 
         if not (mat != 0).any():
             return None, [], {}
@@ -462,49 +405,525 @@ class PDDLEffectVectorLoopGenerator():
 
 
 
+
+def constraints_to_vector(row_names: List[ParameterizedOption],
+                                        constraints: List[Tuple]) -> list[list[int]]:
+                    """
+                    Return allowed_codes[action_index] → list of permissible integers {0,1,2}.
+
+                    Mapping from the original two-channel rules
+                        • channel==0, value==1  → only code 1   (add effect required)
+                        • channel==0, value==0  → code 1 forbidden
+                        • channel==1, value==1  → only code 2   (delete effect required)
+                        • channel==1, value==0  → code 2 forbidden
+                    The intersection of all rules for the same action is kept.
+                    """
+                    n_actions = len(row_names)
+                    allowed = [set([0, 1, 2]) for _ in range(n_actions)]
+
+                    for rule in constraints:
+                        if rule[0] != "position":
+                            continue
+                        row, _, channel, value = rule[1:]
+
+                        if channel == 0:            # ADD channel
+                            if value == 1:
+                                allowed[row] = {1}
+                            else:                   # value == 0
+                                allowed[row].discard(1)
+
+                        elif channel == 1:          # DELETE channel
+                            if value == 1:
+                                allowed[row] = {2}
+                            else:                   # value == 0
+                                allowed[row].discard(2)
+
+                    # convert sets → sorted lists for JSON friendliness
+                    return [sorted(list(codes)) for codes in allowed]
+def _vec_to_key(self, vec: Union[torch.Tensor, List[int]]) -> str:
+        """Convert an *effect vector* back to the canonical history key."""
+        if isinstance(vec, torch.Tensor):
+            vec = vec.tolist()
+        add_set, del_set = [], []
+        for v, opt in zip(vec, self._orig_options):
+            if v == 1:
+                add_set.append(opt.name)
+            elif v == 2:
+                del_set.append(opt.name)
+        return f"ADD:{sorted(add_set)}|DEL:{sorted(del_set)}"
+
+class LLMEffectVectorGenerator:
+    """Generate **one** novel effect vector for a single predicate.
+
+    Workflow:
+    1. Optionally supply *constraint_matrix*: list[len(actions)] of allowed code sets
+       (e.g. [[0,1], [0,2], [0]]).
+    2.  Actions whose allowed set == {0} are fixed to NO‑CHANGE and are omitted
+        from the LLM prompt.
+    3.  Remaining actions are classified into *add‑candidates* (code 1 allowed)
+        and *del‑candidates* (code 2 allowed).  These candidate lists are shown
+        to the LLM so it only chooses from valid actions.
+    4.  LLM replies with exactly two lines::
+
+            ADD: actionA, actionB
+            DEL: actionC
+
+        Any action not listed is NO‑CHANGE.
+    5.  The parser fuzzy‑matches action names (cutoff 0.8), verifies that chosen
+        codes respect the constraint matrix, and returns a **full‑length**
+        torch.LongTensor effect vector (0/1/2 per original action order).
+    """
+
+    # ───────────────────────────── constructor ────────────────────────────
+    def __init__(
+        self,
+        *,
+        target_pred: Predicate,
+        sorted_options: List[ParameterizedOption],
+        other_predicates: Optional[Set[Predicate]] = None,
+        domain_desc: Optional[str] = None,
+        llm_cfg: Optional[Dict] = None,
+        constraint_matrix: Optional[List[List[int]]] = None,
+        history_cutoff: int = 25,
+
+    ) -> None:
+        # ---------- bookkeeping ----------
+        self.target_pred = target_pred
+        self._orig_options = list(sorted_options)           # keep full list for mapping
+        self._orig_len = len(self._orig_options)
+        self._options: List[ParameterizedOption] = list(sorted_options)  # may be filtered
+        self._orig_idx: List[int] = list(range(self._orig_len))          # original indices
+        self._other_preds = other_predicates or set()
+        self._domain_desc = domain_desc
+        self._constraint = constraint_matrix or [[0, 1, 2] for _ in range(self._orig_len)]
+
+        self._losses: Dict[str, float] = {}
+        self._guidances: Dict[str, torch.Tensor] = {}
+
+        # history of attempts (string keys)
+        self._seen: Set[str] = set()
+
+        # ---------- env + LLM cfg ----------
+        load_dotenv(".env.local")
+        self.cfg = {
+            "model": "gpt-4o",
+            "temperature": 0.9,
+            "max_tokens": 4096,
+            "retry_attempts":10,
+            "timeout": 30.0,
+            **(llm_cfg or {}),
+        }
+        openai.api_key = self.cfg.get("api_key") or os.getenv("OPENAI_API_KEY")
+        if not openai.api_key:
+            raise RuntimeError("OPENAI_API_KEY not set.")
+        self._client = openai.OpenAI(api_key=openai.api_key, timeout=self.cfg["timeout"])
+
+        # ——— filter & derive candidate sets ———
+        self._filter_and_prepare()
+
+        # prompts
+        self.system_prompt = self._build_system_prompt()
+        print(self.system_prompt)
+        logging.info("System prompt built:\n%s", self.system_prompt)
+
+    # ──────────────────────── constraint handling ─────────────────────────
+    def _filter_and_prepare(self) -> None:
+        """Apply constraint matrix, create maps & candidate lists."""
+        keep_opts: List[ParameterizedOption] = []
+        keep_idx: List[int] = []
+        keep_allowed: List[Set[int]] = []
+        for idx, (opt, allowed) in enumerate(zip(self._orig_options, self._constraint)):
+            allowed_set = set(allowed)
+            if allowed_set == {0}:  # fixed NO‑CHANGE ⇒ skip from LLM
+                continue
+            keep_opts.append(opt)
+            keep_idx.append(idx)
+            keep_allowed.append(allowed_set)
+        self._options = keep_opts
+        self._orig_idx = keep_idx
+        self._allowed_local = keep_allowed  # parallel to self._options
+
+        # candidate action name sets for ADD / DEL
+        self._add_cand = {opt.name for opt, allowed in zip(self._options, self._allowed_local) if 1 in allowed}
+        self._del_cand = {opt.name for opt, allowed in zip(self._options, self._allowed_local) if 2 in allowed}
+
+    # ─────────────────────────── prompt building ──────────────────────────
+    def _build_system_prompt(self) -> str:
+        lines: List[str] = []
+        # ----- high‑level role -----
+        lines.append(
+            "You are an expert symbolic‑planner assistant. "
+            "For the <TARGET> predicate, infer which actions ADD it, which DELETE it, and which leave it unchanged."
+            "The name of the <TARGET> predicate may be unknown—just ignore its name,and using its type and domain to infer. "
+        )
+        lines.append(
+            "A predicate is an abstract statement about the world. For instance, in Blocks‑World, `OnTable(block)` will be DELETE after `Pick(block)`."
+        )
+        # ----- output contract -----
+        lines.append(
+            "Reply **with exactly two lines** (no extra commentary):\n"
+            "ADD: action_name_1, action_name_2 (comma‑separated, or leave blank)\n"
+            "DEL: action_name_3 (comma‑separated, or leave blank)"
+        )
+        lines.append("Any action not listed is implicitly NO‑CHANGE.")
+        lines.append(
+            "Remember the effect is always sparse,which means only few actions will be involved in each predicate.So tries to explore those with fewer non-zero entries first,but do not repeat previous effects or effects out of ADD/DEL candidates."
+        )
+        # ----- domain description -----
+        if self._domain_desc:
+            lines.extend(["=== Domain Description ===", self._domain_desc, "---"])
+        # ----- predicates -----
+        lines.append("=== Predicates ===")
+        for p in sorted({self.target_pred} | self._other_preds, key=lambda x: x.name):
+            prefix = "<TARGET> " if p == self.target_pred else ""
+            lines.append(f"{prefix}Predicate: Unknown | Types: {[t.name for t in p.types]}")
+       
+        # ----- detailed option list -----
+        lines.append("=== Actions (index‑order) ===")
+        for opt in self._options:
+            lines.append(f"{opt.name}({[t.name for t in opt.types]})")
+      
+
+         # ----- actions -----
+        lines.append("=== Candidate Actions ===")
+        lines.append("ADD‑candidates: " + (", ".join(sorted(self._add_cand)) or "(none)"))
+        lines.append("DEL‑candidates: " + (", ".join(sorted(self._del_cand)) or "(none)"))
+        return "\n".join(lines)
+
+    def _user_prompt(self) -> str:
+        parts: List[str] = []
+        if self._seen:
+            tried = "; ".join(sorted(self._seen))
+            parts.append("Tried (avoid repeating exactly): " + tried)
+        return "\n".join(parts)
+
+    # ──────────────────────────── helpers ────────────────────────────
+    def _call_llm(self, prompt: str) -> str:
+        chat = self._client.chat.completions.create(
+            model=self.cfg["model"],
+            temperature=self.cfg["temperature"],
+            max_tokens=self.cfg["max_tokens"],
+            messages=[
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": prompt},
+            ],
+        )
+        return chat.choices[0].message.content
+
+    def _parse(self, text: str) -> Optional[torch.Tensor]:
+        """Parse LLM reply → full‑length torch.LongTensor."""
+        # Grab the two required lines (order‑insensitive, case‑insensitive)
+        m = re.search(r"ADD:\s*(.*)\n\s*DEL:\s*(.*)", text, flags=re.I)
+        if not m:
+            return None
+        add_raw, del_raw = m.group(1).strip(), m.group(2).strip()
+        add_set = {a.strip() for a in add_raw.split(",") if a.strip()}
+        del_set = {a.strip() for a in del_raw.split(",") if a.strip()}
+
+        # de‑duplicate and maintain history key
+        key = f"ADD:{sorted(add_set)}|DEL:{sorted(del_set)}"
+        if key in self._seen:
+            return None
+        self._seen.add(key)
+
+        # quick access map for the (filtered) options list
+        name_to_idx = {opt.name: i for i, opt in enumerate(self._options)}
+        local_vec = [0] * len(self._options)
+        try:
+            for act in add_set:
+                local_vec[name_to_idx[act]] = 1
+            for act in del_set:
+                if act in add_set:
+                    return None  # same action cannot be both ADD and DEL
+                local_vec[name_to_idx[act]] = 2
+        except KeyError:
+            return None  # LLM output an unknown action name
+
+        # map back to original length
+        full_vec = [0] * self._orig_len
+        for local_i, orig_i in enumerate(self._orig_idx):
+            full_vec[orig_i] = local_vec[local_i]
+        return torch.tensor(full_vec, dtype=torch.long)
+     # ---------------- fallback helpers ----------------
+    def _sample_candidates(self, k: int = 10) -> List[torch.Tensor]:
+        candidates: List[torch.Tensor] = []
+        attempts, max_attempts = 0, k * 30
+        while len(candidates) < k and attempts < max_attempts:
+            vec = [self._biased_choice(allowed) for allowed in self._constraint]
+            if all(v == 0 for v in vec):
+                attempts += 1; continue
+            key = self._vec_to_key(vec)
+            if key in self._seen:
+                attempts += 1; continue
+            candidates.append(torch.tensor(vec, dtype=torch.long))
+            attempts += 1
+        return candidates
+
+    @staticmethod
+    def _biased_choice(options: List[int]) -> int:
+        if 0 in options:
+            weights = [4 if x == 0 else 1 for x in options]
+            return random.choices(options, weights=weights)[0]
+        return random.choice(options)
+
+    def _vec_to_add_del(self, vec: Union[torch.Tensor, List[int]]) -> str:
+        add_list, del_list = [], []
+        for v, opt in zip(vec, self._orig_options):
+            if v == 1:
+                add_list.append(opt.name)
+            elif v == 2:
+                del_list.append(opt.name)
+        return f"ADD: {', '.join(add_list)}\nDEL: {', '.join(del_list)}"
+
+    def _candidates_prompt(self, vecs: List[torch.Tensor]) -> str:
+        lines = [
+            "### MODE SWITCHED: SELECTION MODE ###",
+            "The LLM failed to propose a new vector. Below are 10 **pre‑generated** vectors in the usual two‑line format.\n",
+            "Choose ONE of them by **copying its two lines exactly** (no numbering, no extra text).",
+            "--- Options ---"
+        ]
+        for i, v in enumerate(vecs, 1):
+            option = self._vec_to_add_del(v)
+            numbered = f"Option {i}:\n{option}"
+            lines.append(numbered)
+        return "\n".join(lines)
+    def _vec_to_key(self, vec: Union[torch.Tensor, List[int]]) -> str:
+        if isinstance(vec, torch.Tensor):
+            vec = vec.tolist()
+        add_set, del_set = [], []
+        for v, opt in zip(vec, self._orig_options):
+            if v == 1:
+                add_set.append(opt.name)
+            elif v == 2:
+                del_set.append(opt.name)
+        return f"ADD:{sorted(add_set)}|DEL:{sorted(del_set)}"
+
+
+    # ────────────────────────── public API ──────────────────────────
+    # ---------------- public update funcs ----------------
+    def update_loss(self, vec: Union[torch.Tensor, List[int]], loss: float) -> None:
+        key = self._vec_to_key(vec)
+        self._seen.add(key)
+        self._losses[key] = float(loss)
+
+    def update_guidance(self, vec: Union[torch.Tensor, List[int]], guidance: torch.Tensor) -> None:
+        """Store guidance (same length as effect vector)."""
+        key = self._vec_to_key(vec)
+        self._seen.add(key)
+        self._guidances[key] = guidance.clone().detach()
+    
+    # ---------------- main generator ----------------
+    def generate(self) -> Optional[torch.Tensor]:
+        prompt = self._user_prompt()
+        vec = None
+        for _ in range(self.cfg["retry_attempts"]):
+            try:
+                reply = self._call_llm(prompt)
+                vec = self._parse(reply)
+                if vec is not None:
+                    return vec
+            except Exception as e:
+                logging.warning("LLM primary mode error: %s", e)
+                time.sleep(1)
+        # ── fallback selection mode ──
+        candidates = self._sample_candidates(10)
+        if not candidates:
+            return None
+        sel_prompt = self._candidates_prompt(candidates)
+        try:
+            reply = self._call_llm(sel_prompt)
+            vec = self._parse(reply)
+            if vec is not None:
+                return vec
+        except Exception as e:
+            logging.warning("LLM selection mode error: %s", e)
+        # ultimate fallback
+        vec = candidates[0]
+        self._seen.add(self._vec_to_key(vec))
+        return vec
+
 # ───────────────────────────────────── demo ──────────────────────────────────
 
 if __name__ == "__main__":
-    # Dummy mini‑domain as in v1: three actions, one predicate.
-    class T:  # Dummy type
-        def __init__(self, name):
-            self.name = name
+  
 
-    obj = T("object")
+    def test_extract_vector_from_pddl():
+        # Mock class to hold method
+        class MockParser:
+            def __init__(self):
+                # Assume these are the original actions in system
+                self._orig_options = [type("Act", (), {"name": "stack"}), type("Act", (), {"name": "unstack"})]
+                self._initial_pred_set = set()  # Assume no predicates are known initially
+            
 
-    class O:  # Dummy action/option
-        def __init__(self, name):
-            self.name = name
-            self.types = [obj, obj]
+            def _extract_vector_from_pddl(self, txt):
+                # ---------- ③ build |grounded_preds| × |actions| matrix ----------
+                mat_rows = []
+                pred2types = {}
+                row_index = {}
+                col_count = len(self._orig_options)
+                mat = []
 
-    actions = [O("Pick"), O("Place"), O("Move")]
+                act2idx = {_pddl_name(o.name): i for i, o in enumerate(self._orig_options)}
 
-    class P:  # Dummy predicate
-        def __init__(self, name):
-            self.name = name
-            self.types = [obj]
-    
+                def _grab_effect(txt, start):			
+                    idx = txt.find('(', start)
+                    depth = 0
+                    for i in range(idx, len(txt)):
+                        depth += (txt[i] == '(') - (txt[i] == ')')
+                        if depth == 0:
+                            return txt[idx:i+1]
+                    return ""
 
-    class P_bi:  # Dummy predicate
-        def __init__(self, name):
-            self.name = name
-            self.types = [obj,obj]
+                def _extract_grounded_predicates(effect: str):
+                    """
+                    Parse :effect block into list of (predicate_name, args, is_delete).
+                    This version uses a parenthesis stack to support nested expressions.
+                    """
+                    from io import StringIO
+
+                    def tokenize(s):
+                        buf = ''
+                        for c in s:
+                            if c in ('(', ')'):
+                                if buf.strip():
+                                    yield buf.strip()
+                                yield c
+                                buf = ''
+                            else:
+                                buf += c
+                        if buf.strip():
+                            yield buf.strip()
+
+                    tokens = list(tokenize(effect))
+                    stack = []
+                    result = []
+
+                    def collapse_expr(expr):
+                        if not expr:
+                            return
+                        if expr[0] == 'not':
+                            if len(expr) >= 2 and isinstance(expr[1], list):
+                                inner = expr[1]
+                                if len(inner) >= 1:
+                                    pred = inner[0]
+                                    args = inner[1:]
+                                    result.append((pred, args, True))
+                        else:
+                            pred = expr[0]
+                            args = expr[1:]
+                            result.append((pred, args, False))
+
+                    curr = []
+                    for token in tokens:
+                        if token == '(':
+                            stack.append(curr)
+                            curr = []
+                        elif token == ')':
+                            if stack:
+                                prev = stack.pop()
+                                prev.append(curr)
+                                curr = prev
+                        else:
+                            curr.append(token)
+                    # final pass over top-level expression
+                    for e in curr:
+                        if isinstance(e, list):
+                            collapse_expr(e)
+
+                    # clean and return
+                    cleaned = []
+                    for pred, args, is_delete in result:
+                        pred = _pddl_name(pred)
+                        args = [a for a in args if not a.startswith('?')]
+                        cleaned.append((pred, args, is_delete))
+                    return cleaned
 
 
-    holding = P("unknown")
-    taking = P_bi("unknown")
-    
 
-    gen = PDDLEffectVectorGenerator(
-        target_preds= {holding, taking},
-        sorted_options=actions,
-        domain_desc="Blocks‑world domain with one gripper (demo)",
-    )
 
-    # First vector (no loss yet).
-    v1 = gen.generate()
-    print("v1 =", v1)
+             
+                for m in re.finditer(r"\(:action\s+([^\s]+)", txt):
+                    act_name = _pddl_name(m.group(1))
+                    col = act2idx.get(act_name)
+                    if col is None:
+                        continue
 
-    # Second vector (LLM now sees the (vector,loss) table).
-    v2 = gen.generate()
-    print("v2 =", v2)
+                    effect = _grab_effect(txt, txt.find(":effect", m.end()))
+                    if not effect:
+                        continue
+
+                    updates = []
+                    grounded_preds = _extract_grounded_predicates(effect)
+                    for name, args, is_delete in grounded_preds:
+                        grounded_name = name + '__' + '__'.join(args)
+                        if grounded_name not in row_index:
+                            row_index[grounded_name] = len(mat_rows)
+                            mat_rows.append(grounded_name)
+                            pred2types[grounded_name] = ['block'] * len(args)
+                        updates.append((row_index[grounded_name], 2 if is_delete else 1))
+
+                    while len(mat) < len(mat_rows):
+                        mat.append(torch.zeros(col_count, dtype=torch.long))
+                    for row, code in updates:
+                        mat[row][col] = code
+
+
+                if not mat or not any(m.any() for m in mat):
+                    return None, [], {}
+
+                mat_tensor = torch.stack(mat, dim=0)
+                return mat_tensor, mat_rows, pred2types
+
+
+        # === Sample domain with grounded effects ===
+        pddl_text = """
+        (:predicates
+            (clear ?b - block)
+            (on ?x - block ?y - block)
+        )
+
+        (:action stack
+            :parameters (?x - block ?y - block)
+            :effect (and (clear b1) (not (clear b2)) (on b1 b2))
+        )
+
+        (:action unstack
+            :parameters (?x - block ?y - block)
+            :effect (and (not (on b1 b2)) (clear b2))
+        )
+        """
+
+        parser = MockParser()
+        mat, pred_order, pred2types = parser._extract_vector_from_pddl(pddl_text)
+
+        print("Predicate Order:")
+        print(pred_order)
+        print("\nEffect Matrix:")
+        print(mat)
+        print("\nPredicate Type Signatures:")
+        for k, v in pred2types.items():
+            print(f"{k}: {v}")
+
+        # === Assertions ===
+        assert mat.shape[1] == 2  # two actions
+        assert "clear__b1" in pred_order
+        assert "clear__b2" in pred_order
+        assert "on__b1__b2" in pred_order
+
+        # Convert matrix to readable form for checking
+        mat_np = mat.numpy()
+        row = {name: i for i, name in enumerate(pred_order)}
+
+        assert mat_np[row["clear__b1"]][0] == 1  # added in stack
+        assert mat_np[row["clear__b2"]][0] == 2  # deleted in stack
+        assert mat_np[row["on__b1__b2"]][0] == 1  # added in stack
+
+        assert mat_np[row["on__b1__b2"]][1] == 2  # deleted in unstack
+        assert mat_np[row["clear__b2"]][1] == 1  # added in unstack
+
+        print("\n✅ Test passed.")
+
+    # Run test
+    test_extract_vector_from_pddl()
+

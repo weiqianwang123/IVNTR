@@ -95,7 +95,7 @@ config:
 
   - name: "neural_b_p4"
     types: ["block", "block"]
-    num_vectors_to_generate: 2
+    num_vectors_to_generate: 1
     ent_idx: [0, 1]
     architecture:
       type: "MLP"
@@ -155,7 +155,7 @@ config:
 
   - name: "neural_b_p6"
     types: ["robot", "block"]
-    num_vectors_to_generate: 5
+    num_vectors_to_generate: 1
     ent_idx: [0, 0]
     architecture:
       type: "MLP"

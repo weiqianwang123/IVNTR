@@ -8,17 +8,17 @@ do
     # Record start time
     start_time=$(date +%s)
     # low-level sampling is very hard for this environment
-    if python3 predicators/main.py --env blocks_onclear --approach ivntr \
+    if python3 predicators/main.py --env blocks_onclear --approach ivntr-pdlm \
         --seed $seed --offline_data_method "demo" \
         --disable_harmlessness_check True \
         --excluded_predicates "On,OnTable,GripperOpen,Holding,Clear" \
-        --neupi_pred_config "predicators/config/blocks_onclear/pred.yaml" \
+        --neupi_pred_config "predicators/config/blocks_onclear/pred_pdlm.yaml" \
+        --pred_pddl_config "predicators/config/blocks_onclear/pddl.json" \
         --neupi_gt_ae_matrix False \
         --exclude_domain_feat "none" \
         --domain_sampler_data_filter "none" \
         --sesame_task_planner "fdsat" \
         --num_train_tasks 500 \
-        --load_data \
         --timeout 5 \
         --neupi_do_normalization True \
         --neupi_entropy_w 0.0 \
@@ -28,9 +28,9 @@ do
         --bilevel_plan_without_sim False \
         --execution_monitor expected_atoms \
         --domain_aaai_thresh 6000000 \
-        --approach_dir "saved_approaches/final/blocks_pos/ivntr_$seed" \
-        --neupi_save_path "saved_approaches/final/blocks_pos/ivntr_$seed" \
-        --log_file logs/ivntr_ood_$seed.log; then
+        --approach_dir "saved_approaches/final/blocks_pos/ivntr_pdlm_$seed" \
+        --neupi_save_path "saved_approaches/final/blocks_pos/ivntr_pdlm_$seed" \
+        --log_file logs/blocks_pos/ivntr_ood_pdlm_$seed.log; then
         echo "Seed $seed completed successfully."
     else
         echo "Seed $seed encountered an error."

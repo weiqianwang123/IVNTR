@@ -234,7 +234,7 @@ class _OperatorBeliefScoreFunction(abc.ABC):
 
 
             except (PlanningTimeout, PlanningFailure):
-                scored.append((CFG.neupi_aaai_expected_nodes_upper_bound,demo_idx, []))
+                scored.append((CFG.neupi_aaai_expected_nodes_upper_bound,[]))
 
         # 排序并截取前三
         if not scored:

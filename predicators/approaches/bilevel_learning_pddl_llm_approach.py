@@ -55,8 +55,9 @@ from predicators.structs import Dataset, GroundAtom, GroundAtomTrajectory, LowLe
     Action
 from predicators.structs import NSRT, PNAD, GroundAtomTrajectory, \
     LowLevelTrajectory, ParameterizedOption, Predicate, Segment, Task
-from predicators.llm.llm_for_effect import LLMEffectVectorGenerator,LLMEffectVectorGeneratorV2,LLMEffectVectorGeneratorV3,two2one
-from predicators.llm.llm_for_pddl import PDDLEffectVectorGenerator
+
+from predicators.llm.llm_pdlm import LLMEffectVectorGenerator,PDDLEffectVectorGenerator,constraints_to_vector
+
 
 _Output = TypeVar("_Output")  # a generic type for the output of this GNN
 
@@ -138,7 +139,7 @@ def train_val_model_in_parallel(curr_pred, ent_idx, pred_save_path, ae_vector, i
     torch.save(ae_vector, save_path_ae_vector)
     # Put result in the queue
     # val loss is also used to determine the consistency of this predicate
-    queue.put((save_path_model, best_val_loss))
+    queue.put((n,save_path_model, best_val_loss))
 
 def train_val_model_single(curr_pred, ent_idx, pred_save_path, ae_vector, iteration, pred_config, \
                                 ae_row_name_dict, node_feature_to_index, edge_feature_to_index, \
@@ -269,6 +270,7 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
         # load pred settings
         assert os.path.exists(CFG.neupi_pred_config), "Pred Settings Not Found"
         config_dict = yaml.safe_load(open(CFG.neupi_pred_config, 'r'))
+        assert os.path.exists(CFG.pred_pddl_config), "PDDL Config Not Found"
         self.pred_config = config_dict['config']
         self.final_op = config_dict['final_op']
         self.neupi_non_effect_predicates = config_dict['neupi_non_effect_predicates']
@@ -681,151 +683,106 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                             if rule not in self.learned_ae_pred_info[pred]['constraints']:
                                 self.learned_ae_pred_info[pred]['constraints'].append(rule)
 
-    def gen_ae_vectors4pred(self, curr_pred: DummyPredicate, ent_idx: List[int], pred_save_path: str, \
+    def gen_ae_vectors4pred(self, iteration: int, curr_pred: DummyPredicate, ent_idx: List[int], pred_save_path: str, \
                                     pred_config: Dict, data: List[Tuple[State, Set[GroundAtom], \
-                                    State, Set[GroundAtom], _Option, str]],seed_vec: Union[torch.Tensor, List[torch.Tensor]]) \
+                                    State, Set[GroundAtom], _Option, str]], symbolic_model: HierachicalMCTSearcher,llm_generator: Optional[LLMEffectVectorGenerator]=None) \
         -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Generate a bunch of initial binary action effect vector for the tgt predicate.
         The scores for these initial vectors are also returned.
         """
+        logging.info("Generate {} AE Vectors-Score Pairs for Predicate {}"\
+                     .format(pred_config["batch_vect_num"], curr_pred.name))
 
-        if isinstance(seed_vec, torch.Tensor):
-            seed_vecs = [seed_vec]
+        # 1. Use symbolic model to generate AE vectors
+        if self.gt_ae_matrix:
+            if iteration == 0:
+                assert len(self.learned_ae_pred_info[curr_pred]['gt_ae_vecs']), "GT AE Vec Not Provided"
+            else:
+                assert not len(self.learned_ae_pred_info[curr_pred]['gt_ae_vecs']), \
+                    "Iteration > 0, GT AE Vec Should Not Be []"
+            logging.info("GT AE Vec Provided, No Need to Generate AE Vectors.")
+            sat_vectors = copy.deepcopy(self.learned_ae_pred_info[curr_pred]['gt_ae_vecs'])
+            self.learned_ae_pred_info[curr_pred]['gt_ae_vecs'] = []
         else:
-            seed_vecs = seed_vec
+            sat_vectors = self.gen_sat_vec(curr_pred, pred_config["batch_vect_num"], \
+                            pred_config["matrix_vec_try"], symbolic_model,llm_generator)
+            
+        if not len(sat_vectors):
+            logging.info("No more sat matrixes can be generated at iteration {}!".format(iteration))
+            return torch.tensor([]), torch.tensor([]), [], []
+        curr_ae_vectors = sat_vectors
+        # 2. Use neural model to compute the scores for the selected AE vectors
+        logging.info(f"Optimizing {len(curr_ae_vectors)} Neural Models with AE Vector from BO...")
+        ae_vecs = []
+        scores = []
+        val_losses = []
+        model_weight_paths = []
+        train_datasets = []
+        val_datasets = []
 
-        use_parallel = CFG.neupi_parallel_invention and len(seed_vecs) > 1
-        out_vecs, out_guides, out_losses, out_paths = [], [], [], []
-        if use_parallel:
-            logging.info("[%s] Launching %d processes for parallel training",
-                        curr_pred.name, len(seed_vecs))
-
-            queue, procs = Queue(), []
-
-            for idx, sv in enumerate(seed_vecs):
-                train_ds, val_ds = self.gen_graph_data(data, curr_pred, ent_idx, sv)
-                p = Process(target=train_val_model_in_parallel, args=(
-                    curr_pred, ent_idx, pred_save_path,
-                    sv,                           # 2-D seed matrix
-                    0, pred_config, queue,
-                    self.ae_row_names_dict,
-                    self._node_feature_to_index,
-                    self._edge_feature_to_index,
-                    train_ds, val_ds,
-                    idx, CFG.wandb_run_name))
-                p.start()
-                procs.append(p)
-
-            for p in procs:
-                p.join()
-
-            # 取回 <model_path, val_loss>，并加载向量 / guidance
-            while not queue.empty():
-                model_path, val_loss = queue.get()
-                ae_vec   = torch.load(model_path.replace("model", "ae_vector"))
-                guidance = torch.load(model_path.replace("model", "guidance"))
-
-                out_vecs.append(ae_vec.clone())
-                out_guides.append(guidance.clone())
-                out_losses.append(val_loss)
-                out_paths.append(model_path)
-
-        else:  # ---------- 串行一条条训练 -----------------------------------
-            for idx, sv in enumerate(seed_vecs):
-                logging.info("[%s] Serial train on seed %d/%d",
-                            curr_pred.name, idx + 1, len(seed_vecs))
-
-                train_ds, val_ds = self.gen_graph_data(data, curr_pred, ent_idx, sv)
-
-                model = setup_neupi_mlp_net(
-                    self.learned_ae_pred_info[curr_pred]['example_dataset'],
-                    curr_pred.arity,
-                    pred_config['architecture'],
-                    self._node_feature_to_index,
-                    self._edge_feature_to_index)
-
-                model_path, val_loss = train_val_model_single(
-                    curr_pred, ent_idx, pred_save_path,
-                    sv, idx, pred_config,
-                    self.ae_row_names_dict,
-                    self._node_feature_to_index,
-                    self._edge_feature_to_index,
-                    train_ds, val_ds, idx, CFG.wandb_run_name)
-
-                
-                guidance = torch.zeros(len(self.ae_row_names))
-
-                out_vecs.append(sv.clone())
-                out_guides.append(guidance)
-                out_losses.append(val_loss)
-                out_paths.append(model_path)
-
-        return out_vecs, out_guides, out_losses, out_paths
-
-        
-        # for n, sat_vector in enumerate(curr_ae_vectors):
-        #     logging.info(f"*******Vec {n} ({curr_pred.name})*******")
-        #     logging.info("(Add): \n{}".format(sat_vector[:, 0]))
-        #     if sat_vector.shape[-1] == 2:
-        #         logging.info("(Del): \n{}".format(sat_vector[:, 1]))
-        #     # debug
-        #     # model_weight_paths.append("")
-        #     # random_score = torch.randn(len(self.ae_row_names)).clamp(0.1, 0.4)
-        #     # scores.append(random_score)
-        #     # ae_vecs.append(sat_vector.clone())
-        #     train_dataset, val_dataset = self.gen_graph_data(data, 
-        #                                                 curr_pred, 
-        #                                                 ent_idx,
-        #                                                 sat_vector)
-        #     train_datasets.append(train_dataset)
-        #     val_datasets.append(val_dataset)
-        # if len(curr_ae_vectors) == 1 or (not CFG.neupi_parallel_invention):
-        #     for i in range(len(sat_vectors)):
-        #         logging.info(f"Training Neural Model {i}...")
-        #         model_path, val_loss = train_val_model_single(curr_pred, ent_idx, pred_save_path, \
-        #                             sat_vectors[i], iteration, pred_config, self.ae_row_names_dict, \
-        #                             self._node_feature_to_index, self._edge_feature_to_index, \
-        #                             train_datasets[i], val_datasets[i], i, CFG.wandb_run_name)
-        #         model_weight_paths.append(model_path)
-        #         val_losses.append(val_loss)
-        #         ae_vecs.append(sat_vectors[i])
-        #         score = torch.load(model_weight_paths[i].replace("model", "guidance"))
-        #         scores.append(score)
-        # else:
-        #     if CFG.neupi_parallel_invention:
-        #         processes = []
-        #         queue = Queue()
-        #         for i in range(len(sat_vectors)):
-        #             p = Process(target=train_val_model_in_parallel, args=(
-        #                 curr_pred,
-        #                 ent_idx,
-        #                 pred_save_path,
-        #                 sat_vectors[i],
-        #                 iteration,
-        #                 pred_config,
-        #                 queue,
-        #                 self.ae_row_names_dict,
-        #                 self._node_feature_to_index,
-        #                 self._edge_feature_to_index,
-        #                 train_datasets[i],
-        #                 val_datasets[i],
-        #                 i,
-        #                 CFG.wandb_run_name))
-        #             p.start()
-        #             processes.append(p)
-        #         for p in processes:
-        #             p.join()
-        #             logging.info(f"Process {p.pid} finished")
-        #         model_paths_loss = [queue.get() for _ in range(len(sat_vectors))]
-        #         for i in range(len(sat_vectors)):
-        #             model_weight_paths.append(model_paths_loss[i][0])
-        #             val_losses.append(model_paths_loss[i][1])
-        #             score = torch.load(model_paths_loss[i][0].replace("model", "guidance"))
-        #             scores.append(score)
-        #             ae_vec = torch.load(model_paths_loss[i][0].replace("model", "ae_vector"))
-        #             ae_vecs.append(ae_vec)
-        # return ae_vecs, scores, val_losses, model_weight_paths
+        for n, sat_vector in enumerate(curr_ae_vectors):
+            logging.info(f"*******Vec {n} ({curr_pred.name})*******")
+            logging.info("(Add): \n{}".format(sat_vector[:, 0]))
+            if sat_vector.shape[-1] == 2:
+                logging.info("(Del): \n{}".format(sat_vector[:, 1]))
+            # debug
+            # model_weight_paths.append("")
+            # random_score = torch.randn(len(self.ae_row_names)).clamp(0.1, 0.4)
+            # scores.append(random_score)
+            # ae_vecs.append(sat_vector.clone())
+            train_dataset, val_dataset = self.gen_graph_data(data, 
+                                                        curr_pred, 
+                                                        ent_idx,
+                                                        sat_vector)
+            train_datasets.append(train_dataset)
+            val_datasets.append(val_dataset)
+        if len(curr_ae_vectors) == 1 or (not CFG.neupi_parallel_invention):
+            for i in range(len(sat_vectors)):
+                logging.info(f"Training Neural Model {i}...")
+                model_path, val_loss = train_val_model_single(curr_pred, ent_idx, pred_save_path, \
+                                    sat_vectors[i], iteration, pred_config, self.ae_row_names_dict, \
+                                    self._node_feature_to_index, self._edge_feature_to_index, \
+                                    train_datasets[i], val_datasets[i], i, CFG.wandb_run_name)
+                model_weight_paths.append(model_path)
+                val_losses.append(val_loss)
+                ae_vecs.append(sat_vectors[i])
+                score = torch.load(model_weight_paths[i].replace("model", "guidance"))
+                scores.append(score)
+        else:
+            if CFG.neupi_parallel_invention:
+                processes = []
+                queue = Queue()
+                for i in range(len(sat_vectors)):
+                    p = Process(target=train_val_model_in_parallel, args=(
+                        curr_pred,
+                        ent_idx,
+                        pred_save_path,
+                        sat_vectors[i],
+                        iteration,
+                        pred_config,
+                        queue,
+                        self.ae_row_names_dict,
+                        self._node_feature_to_index,
+                        self._edge_feature_to_index,
+                        train_datasets[i],
+                        val_datasets[i],
+                        i,
+                        CFG.wandb_run_name))
+                    p.start()
+                    processes.append(p)
+                for p in processes:
+                    p.join()
+                    logging.info(f"Process {p.pid} finished")
+                model_paths_loss = [queue.get() for _ in range(len(sat_vectors))]
+                for i in range(len(sat_vectors)):
+                    model_weight_paths.append(model_paths_loss[i][1])
+                    val_losses.append(model_paths_loss[i][2])
+                    score = torch.load(model_paths_loss[i][1].replace("model", "guidance"))
+                    scores.append(score)
+                    ae_vec = torch.load(model_paths_loss[i][1].replace("model", "ae_vector"))
+                    ae_vecs.append(ae_vec)
+        return ae_vecs, scores, val_losses, model_weight_paths
    
     def gen_sat_vec(self, pred: DummyPredicate, \
                     max_num: int, \
@@ -865,51 +822,10 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                     raise ValueError('Unknown constraint type')
             
             if llm_generator is not None:
-                def constraints_to_vector(row_names: List[ParameterizedOption],
-                                        constraints: List[Tuple]) -> list[list[int]]:
-                    """
-                    Return allowed_codes[action_index] → list of permissible integers {0,1,2}.
+                
 
-                    Mapping from the original two-channel rules
-                        • channel==0, value==1  → only code 1   (add effect required)
-                        • channel==0, value==0  → code 1 forbidden
-                        • channel==1, value==1  → only code 2   (delete effect required)
-                        • channel==1, value==0  → code 2 forbidden
-                    The intersection of all rules for the same action is kept.
-                    """
-                    n_actions = len(row_names)
-                    allowed = [set([0, 1, 2]) for _ in range(n_actions)]
 
-                    for rule in constraints:
-                        if rule[0] != "position":
-                            continue
-                        row, _, channel, value = rule[1:]
-
-                        if channel == 0:            # ADD channel
-                            if value == 1:
-                                allowed[row] = {1}
-                            else:                   # value == 0
-                                allowed[row].discard(1)
-
-                        elif channel == 1:          # DELETE channel
-                            if value == 1:
-                                allowed[row] = {2}
-                            else:                   # value == 0
-                                allowed[row].discard(2)
-
-                    # convert sets → sorted lists for JSON friendliness
-                    return [sorted(list(codes)) for codes in allowed]
-
-                def constraints_to_hint(*, row_names, constraints):
-                    """Return one-liner JSON-ish string for the LLM prompt."""
-                    vec = constraints_to_vector(row_names, constraints)
-                    return "CONSTRAINT_MATRIX = " + str(vec)
-                hint_txt = constraints_to_hint(
-                    row_names = self.ae_row_names,
-                    constraints = constraints
-                )
-
-                symbolic_proposal = llm_generator.generate(hint=hint_txt)
+                symbolic_proposal = llm_generator.generate()
                 logging.info(f"Symbolic proposal: {symbolic_proposal}")
                 if symbolic_proposal is None:
                     return sat_vectors
@@ -943,7 +859,7 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                 # guidance = np.array([np.inf for _ in range(len(self.ae_row_names))])
                 # # unsatisfiable node, update searcher
                 logging.info(f"Vector not satisfiable.")
-                llm_generator.update_loss(symbolic_proposal, float("inf"))
+                # llm_generator.update_loss(symbolic_proposal, float("inf"))
         return sat_vectors
             
     def _setup_input_fields(
@@ -1013,8 +929,7 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
             else:
                 self._edge_is_rot.append(False)
             index += 1
-    
-        
+
     def _generate_data_from_dataset(
         self, dataset: Dataset
     ) -> Tuple[List[Tuple[State, Set[GroundAtom], State, Set[GroundAtom], _Option, str]], List]:
@@ -1048,76 +963,7 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
             atoms_traj.append(atoms_) # the last state atoms
             ground_atom_dataset.append((ll_traj, atoms_traj))
         self.max_action_arity = max_action_arity
-        def simplify_action_string(action) -> str:
-            """将复杂的 SingletonParameterizedOption 动作格式简化为可读格式。"""
-            option = action.get_option()
-            name = option.parent.name
-            obj_names = [str(o).split(":")[0] for o in option.objects]  # 去掉 ":type"
-            return f"{name}({', '.join(obj_names)})"
-
-        def format_demo_traj_static_atoms(traj, atoms_traj, segment_traj) -> str:
-            """格式化一条演示轨迹，显示初始状态、动作序列和最终新增加的 atom。"""
-            # 初始状态 atoms
-            init_atoms = atoms_traj[0]
-            init_str = " ".join(str(a) for a in init_atoms)
-
-            # 简化后的动作序列
-            actions = [simplify_action_string(action) for action in segment_traj]
-
-            # 最终状态新增 atom（goal）
-            final_atoms = atoms_traj[-1]
-            added_atoms = set(final_atoms) - set(init_atoms)
-            added_str = " ".join(str(a) for a in added_atoms) if added_atoms else "(no new atom)"
-
-            return (
-                f"Initial state atoms:\n{init_str}\n\n"
-                f"Note: Atoms remain unchanged throughout until the goal is achieved.\n\n"
-                f"Action sequence:\n" + "\n".join(f"- {a}" for a in actions) + "\n\n"
-                f"Final state contains one new atom indicating goal achieved:\n{added_str}"
-            )
-
-
-        # ---- 格式化前 3 条演示轨迹 ----
-        demo_lines = []
-        for (traj, atoms_traj), seg_traj in zip(ground_atom_dataset[:3], segmented_trajs[:3]):
-            demo_lines.append(format_demo_traj_static_atoms(traj, atoms_traj, seg_traj))
-
-        demo_prompt = (
-            "Here are 3 demonstration trajectories in simplified format:\n\n"
-            + "\n\n---\n\n".join(demo_lines) + "\n\n"
-        )
-
-        # import json
-
-      
-        # def serialize_state(state):
-        #     return str(state)
-
-        # def serialize_atom(atom):
-        #     return str(atom)
-
-        # def serialize_action(option):
-        #     return {
-        #         "name": str(option.parent),
-        #         "objects": [str(o) for o in option.objects]
-        #     }
-
-        # # 保存前3条完整 demonstration 轨迹（用 segment 中的 option）
-        # full_demo_data = []
-        # for (traj, atoms_traj), segment_traj in zip(ground_atom_dataset[:3], segmented_trajs[:3]):
-        #     traj_dict = {
-        #         "states": [serialize_state(s) for s in traj.states],
-        #         "actions": [serialize_action(seg.get_option()) for seg in segment_traj],
-        #         "atoms": [[serialize_atom(a) for a in step_atoms] for step_atoms in atoms_traj],
-        #     }
-        #     full_demo_data.append(traj_dict)
-
-        # with open("full_demo_trajectories.json", "w") as f:
-        #     json.dump(full_demo_data, f, indent=2)
-
-
-
-        return data, dataset.trajectories[:num_trajs], ground_atom_dataset,demo_prompt
+        return data, dataset.trajectories[:num_trajs], ground_atom_dataset
 
     # Optimized vectorized version
     def add_edge_features_fast(self, 
@@ -1356,7 +1202,6 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
             # find the operated object that is the argument in the pred
             if len(action_ent[type0]) <= ent0 or len(action_ent[type1]) <= ent1:
                 # action objs do not have enough objects for this predicate
-                
                 assert (ae_vector_value==0).all(), "Should be zero"
                 pred_type_obj0 = None
                 pred_type_obj1 = None
@@ -1625,7 +1470,7 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
         total_mcts_iterations = 0
         num_vectors_to_generate_list = self.pred_config[0]['num_vectors_to_generate_list']
         # 1. Generate data from the dataset. This is general
-        data, trajectories, init_atom_traj,demo_prompt = self._generate_data_from_dataset(dataset)
+        data, trajectories, init_atom_traj = self._generate_data_from_dataset(dataset)
         # 2. Setup the input fields for the neural predicate, this is general
         self._setup_input_fields(data)
         # 3. Get the initial constraints (for all types of predicates)
@@ -1651,31 +1496,24 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                 self._input_normalizers = compute_normalizers(graph_inputs, normalize_nodes=self._node_is_rot, \
                                                             normalize_edges=self._edge_is_rot,
                                                             normalize_globals=False)
-        # ----------------------------------------------------------------------
         all_target_preds: Set[Predicate] = {
         pred for pred, info in self.learned_ae_pred_info.items()
         if not info['provided']                   # <- skip the “provided” ones
         }
-
-        multi_llm = PDDLEffectVectorGenerator(                  # <- NEW
-                target_preds   = all_target_preds,
-                sorted_options = list(self._sorted_options),
-                domain_desc    = self.pred_config[0]['domain_desc'],
-                other_predicates = self._initial_predicates,
-                demo_prompt    = demo_prompt)
-
-        # Matrix shape = (|preds| , |actions|).  0=no change, 1=add, 2=del
-        llm_effect_bank: torch.Tensor = multi_llm.generate()    # <- ONE OpenAI call
+        pddl_generator = PDDLEffectVectorGenerator(                  
+                    target_preds   = all_target_preds,
+                    sorted_options = list(self._sorted_options),
+                    domain_desc    = "",
+                    other_predicates = self._initial_predicates,
+                    demo_prompt    = "",
+                    pddl_config_path = CFG.pred_pddl_config)
+        
+        llm_effect_bank: torch.Tensor = pddl_generator.generate()    # <- ONE OpenAI call
 
         # keep a fast lookup: predicate → row-index in the matrix
         pred_order          = list(all_target_preds)
         print("Generated LLM Effect Bank:", llm_effect_bank)
         print("Predicates Order:", pred_order)
-        # ----------------------------------------------------------------------
-        # helper:  0/1/2   →   (add, del) two-channel tensor
-        # ----------------------------------------------------------------------
-        
-        # 4. Start Learning the typed columns one by one
         for curr_pred in list(sorted(self.learned_ae_pred_info.keys(), key=lambda p: p.arity, reverse=True)):
             if self.learned_ae_pred_info[curr_pred]['provided']:
                 # this is learned/provided, directly generate the vectors
@@ -1694,11 +1532,19 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
             for config in self.pred_config:
                 if config["name"] == curr_pred.name:
                     pred_config = config
+            # num_vectors_to_generate = num_vectors_to_generate_list[curr_pred.arity-1]
+            num_vectors_to_generate = pred_config.get(
+                "num_vectors_to_generate"
+            )
+            logging.info(f"Number of vectors to generate for {curr_pred.name}: {num_vectors_to_generate}")
             assert pred_config, "Should have the config for the current predicate"
             logging.info(f"**************Learning Typed Predicate: {curr_pred.name}**************")
             logging.info(f"Learning Config: {pred_config}")
-            assert len(self.learned_ae_pred_info[curr_pred]['ent_idx']) == 1
+            # assert len(self.learned_ae_pred_info[curr_pred]['ent_idx']) == 1
+            # if whole_iteration==0:
             ent_idx = self.learned_ae_pred_info[curr_pred]['ent_idx'][0]
+            # else:
+            #     ent_idx = self.learned_ae_pred_info[curr_pred]['ent_idx'][0][0]
             # 4.1 Setup the Neural Model and Optimizers
             # state s
             if CFG.exclude_domain_feat is not None:
@@ -1747,8 +1593,8 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                                         pred_config['architecture'],
                                         self._node_feature_to_index,
                                         self._edge_feature_to_index)
-         
-           
+        
+        
             self.learned_ae_pred_info[curr_pred]['model'] = predicate_neural_model # save the model template
             # The predicate is trained and will be skipped
             # Or, we directly load it
@@ -1785,28 +1631,10 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                         self.learned_ae_pred_info[curr_pred]['ae_vecs'].append(ae_vector.clone())
                         self.learned_ae_pred_info[curr_pred]['scores'].append(ae_vector_guidance.clone())
                         self.learned_ae_pred_info[curr_pred]['model_weights'].append(pred_model_path)
-                        # Optional: Compute the AE guidance
-                        # _, val_dataset = self.gen_graph_data(data, curr_pred, ent_idx, \
-                        #         ae_vector.clone())
-                        # val_dataloader = DataLoader(val_dataset,
-                        #     batch_size=pred_config['batch_size'],
-                        #     shuffle=False,
-                        #     num_workers=4,
-                        #     pin_memory=False,
-                        #     collate_fn=action_graph_batch_collate)
-                        # predicate_neural_model.load_state_dict(torch.load(pred_model_path))
-                        # learned_ae_vector = distill_learned_ae_vector(val_dataloader, \
-                        # pred_config['gumbel_temp'], predicate_neural_model, curr_pred, ent_idx, \
-                        # self.ae_row_names_dict, self._node_feature_to_index, CFG.device)
-                        # learned_guidance = compute_guidance_vector(
-                        #                                     learned_ae_vector,
-                        #                                     ae_vector,
-                        #                                     min_prob=CFG.neupi_entropy_entry_min,
-                        #                                     max_prob=CFG.neupi_entropy_entry_max,
-                        #                                     entropy_w=CFG.neupi_entropy_w,
-                        #                                     loss_w=CFG.neupi_loss_w)
+                    
                     self.learned_ae_pred_info[curr_pred]['learned'] = True
             else:
+                 
                 # 4.2 Start the Bi-level Optimization Process for Training
                 logging.info("Training from scratch.")
                 ## Launch training code.
@@ -1816,50 +1644,60 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                 # Step1: Get a bunch of initial ae vector - score pairs
                 logging.info(f"***************Start neural learning for ({curr_pred.name})***************")
                 
-                seed_rows = llm_effect_bank.get(curr_pred, [])
-                seed_rows = [row for row in seed_rows if (row != 0).any()]
-                sat_vectors = self.gen_sat_vec_from_seed(curr_pred, seed_rows)  # ✔ 得到合法向量
-                if not  sat_vectors:          # 全 0 或 PDDL 没给 → 跳过
-                    logging.info("☛ Skip %s : all-zero seed vectors.", curr_pred.name)
-                    self.learned_ae_pred_info[curr_pred]['learned'] = True
-                    continue
-               
-                # def _row_to_mat(row: torch.Tensor) -> torch.Tensor:
-                #     n = row.size(0)
-                #     mat = torch.zeros((n, 2), dtype=torch.long, device=row.device)
-                #     mat[:, 0] = (row == 1).long()        # add
-                #     mat[:, 1] = (row == 2).long()        # delete
-                #     return mat
-
-                # convert all rows now
-                # seed_mats: List[torch.Tensor] = [_row_to_mat(r) for r in seed_rows]
-
-        
-                s_time = time.time()
-                iter_ae_vectors, iter_guidance_vecs, iter_val_loss, model_weight_paths = \
-                    self.gen_ae_vectors4pred(curr_pred, ent_idx, pred_save_path, \
-                                            pred_config, data,sat_vectors)
-                if len(model_weight_paths) == 0:
-                    logging.info(f"cannot find weight!")
-                    break
-
-                # Do we have a low-objective ae vector?
-                logging.info(f"Learning Done in {time.time()-s_time} sec, ")
-                # ------------------------------------------------------------------
-                # KEEP **all** candidate vectors – no objective, no precond check
-                # ------------------------------------------------------------------
-                for k, ae_vector in enumerate(iter_ae_vectors):
-                    self.learned_ae_pred_info[curr_pred]['ae_vecs'].append(ae_vector.clone())
-                    self.learned_ae_pred_info[curr_pred]['scores'].append(iter_guidance_vecs[k].clone())
-                    self.learned_ae_pred_info[curr_pred]['model_weights'].append(model_weight_paths[k])
-                    logging.info(f"[{curr_pred.name}] kept AE-vector #{k} without screening.")
-
+                rows_with_names = llm_effect_bank.get(curr_pred, [])
+                new_rows_names = []
                
                
-              
+
+                new_rows_names: list[tuple[str, torch.Tensor]] = []
+
+                for pddl_name, row_vec in rows_with_names:
+
+                    # keep track of what we’ll really add
+                    new_rows_names.append((pddl_name, row_vec))
+
+
+
                 
+                sat_vec_pairs = self.gen_sat_vec_from_seed(curr_pred, new_rows_names)
+                # if not sat_vec_pairs:         # 全 0 或 PDDL 没给 → 跳过
+                #     logging.info("☛ Skip %s : all-zero seed vectors.", curr_pred.name)
+                #     # self.learned_ae_pred_info[curr_pred]['learned'] = True
+                #     continue
             
-            logging.info(f"******************Learning Done for {curr_pred.name}! Summary:******************")
+                if sat_vec_pairs:
+                    iter_ae_vectors, iter_guidance_vecs, iter_val_loss, model_weight_paths,iter_names = \
+                        self.gen_ae_vectors4pred_pddl(curr_pred, ent_idx, pred_save_path, \
+                                                pred_config, data,sat_vec_pairs,iteration)
+                
+                    # if len(model_weight_paths) == 0:
+                    #     logging.info(f"cannot find weight!")
+                    #     break
+                    all_iter_objective = torch.stack(iter_guidance_vecs, dim=0)
+                    all_iter_objective = all_iter_objective.sum(dim=1)
+                    all_iter_losses = torch.tensor(iter_val_loss)
+                    # checking both objective and loss, loss also consideres non-change groundings
+                    all_pass_mask_obj = all_iter_objective < pred_config["guidance_thresh"]
+                    all_pass_mask_loss = all_iter_losses < pred_config["loss_thresh"]
+                    all_pass_mask = all_pass_mask_obj & all_pass_mask_loss
+                    # Do we have a low-objective ae vector?
+                    logging.info(f"Learning Done for pddl derived predicate {curr_pred.name}!")
+                    # ------------------------------------------------------------------
+                    
+                    for k, ae_vec in enumerate(iter_ae_vectors):
+                        if all_pass_mask[k]:
+                            # ✓ good → keep
+                            self.learned_ae_pred_info[curr_pred]['ae_vecs'].append(ae_vec.clone())
+                            self.learned_ae_pred_info[curr_pred]['scores'].append(iter_guidance_vecs[k].clone())
+                            self.learned_ae_pred_info[curr_pred]['model_weights'].append(model_weight_paths[k])
+                            logging.info(f"[{curr_pred.name}] kept AE-vector #{k} (passes).")
+                else:
+                    pass
+                   
+            
+
+            logging.info(f"******************Bi-level Optimization Done for {curr_pred.name}! Summary:******************")
+            logging.info(f"After {iteration} iterations, we got {len(self.learned_ae_pred_info[curr_pred]['ae_vecs'])} basic vectors:")
             self.learned_ae_pred_info[curr_pred]['learned'] = True
             predicate_vars_basic = []
             for i, t in enumerate(curr_pred.types):
@@ -1897,202 +1735,204 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                     os.rename(saved_guidance_path, saved_guidance_path.replace("_guidance", "_guidance_good"))
                     saved_ae_vector_path = saved_model_path.replace("_model", "_ae_vector")
                     os.rename(saved_ae_vector_path, saved_ae_vector_path.replace("_ae_vector", "_ae_vector_good"))
-                # # 4.3 Check the Negated / Quantified version
-                # if CFG.neupi_w_negation or CFG.neupi_w_quantifiers:
-                #     if curr_pred.arity == 1:
-                #         logging.info("Skipping Negated / Quantified version for unary predicate...")
-                #         # only support binary + quantifier now
-                #         continue
-                #     if os.path.exists(self.learned_ae_pred_info[curr_pred]['model_weights'][i].replace("_model_good.pth", "quantified.pkl")):
-                #         logging.info("Negated / Quantified version already exists, loading...")
-                #         with open(self.learned_ae_pred_info[curr_pred]['model_weights'][i].replace("_model_good.pth", "quantified.pkl"), 'rb') as f:
-                #             quantified_info = pkl.load(f)
-                #         for m in range(1, len(quantified_info['ent_idx'])):
-                #             logging.info(f"Negated / Quantified version {m}...")
-                #             logging.info(f"Quantifier: {quantified_info['quantifiers'][m]}")
-                #             logging.info(f"AE Vector {m}: {two2one(quantified_info['ae_vecs'][m])}")
-                #             # skipping the first one, as it is the original one
-                #             self.learned_ae_pred_info[curr_pred]['ent_idx'][i].append(quantified_info['ent_idx'][m])
-                #             self.learned_ae_pred_info[curr_pred]['ae_vecs'][i].append(quantified_info['ae_vecs'][m])
-                #             self.learned_ae_pred_info[curr_pred]['scores'][i].append(quantified_info['scores'][m])
-                #             self.learned_ae_pred_info[curr_pred]['quantifiers'][i].append(quantified_info['quantifiers'][m])
-                #         continue
-                #     logging.info("Checking Negated / Quantified version...")
-                #     curr_pred_types = [types.name for types in curr_pred.types]
-                #     typed_quantifier = []
-                #     w_negation = [False] if not CFG.neupi_w_negation else [True, False]
-                #     quantifiers = [''] if not CFG.neupi_w_quantifiers else ['', 'ForAll', 'Exists']
-                #     pred_model_weights = torch.load(self.learned_ae_pred_info[curr_pred]['model_weights'][i])
-                #     pred_model = setup_neupi_mlp_net(example_dataset,
-                #                 curr_pred.arity,
-                #                 pred_config['architecture'],
-                #                 self._node_feature_to_index,
-                #                 self._edge_feature_to_index)
-                #     pred_model.load_state_dict(pred_model_weights)
-                #     if CFG.neupi_quantify_dataset != 1.0:
-                #         logging.info(f"Quantifying Dataset: {CFG.neupi_quantify_dataset}")
-                #         self._rng.shuffle(data)
-                #     quantify_data = data[:int(len(data) * CFG.neupi_quantify_dataset)]
-                #     _, val_dataset = self.gen_graph_data(quantify_data, curr_pred, ent_idx, \
-                #     curr_ae_vector.clone())
-                #     val_dataloader = DataLoader(val_dataset,
-                #         batch_size=1, # always use 1 for memory
-                #         shuffle=False,
-                #         num_workers=4,
-                #         pin_memory=False,
-                #         collate_fn=action_graph_batch_collate)
-                #     # just inference once and use the outputs
-                #     logging.info("Inference for the current predicate model...")
-                #     data_results = inferece_dataloader(val_dataloader, pred_model, \
-                #                                        pred_config['gumbel_temp'], \
-                #                                        pred_config['decision_b'], \
-                #                                        CFG.device)
-                #     quantified_threshold = pred_config['quantified_guidance_thresh'] if "quantified_guidance_thresh" \
-                #                             in pred_config else pred_config['guidance_thresh']
-                #     for neg in w_negation:
-                #         logging.info(f"Negation: {neg}")
-                #         for quantifier in quantifiers:
-                #             if quantifier == '':
-                #                 local_ent_idx = ent_idx
-                #                 logging.info(f"No Quantifier, using the original ent idx: {local_ent_idx}")
-                #                 if not neg:
-                #                     continue
-                #                 type_comb = []
-                #                 local_name = gen_pretty_pred_name(basic_pred_name, type_comb, \
-                #                                                 quantifier, neg)
-                #                 logging.info(f" ++++{local_name}++++")
-                #                 typed_quantifier.append((local_name))
-                #                 learned_ae_vector = distill_learned_ae_vector(data_results, \
-                #                     pred_config['gumbel_temp'], pred_config['decision_b'], pred_model, curr_pred, local_ent_idx, \
-                #                     self.ae_row_names_dict, copy.deepcopy(self._node_feature_to_index), \
-                #                         CFG.device, neg, quantifier, type_comb)
-                #                 # no target vector will use entropy
-                #                 learned_guidance = compute_guidance_vector(learned_ae_vector)
-                #                 logging.info(f"Guidance Score: {learned_guidance}")
-                #                 if learned_guidance.sum() < quantified_threshold:
-                #                     final_ae_vec = prob_three2two(learned_ae_vector)
-                #                     if (final_ae_vec==0).all():
-                #                         logging.info(f"AE Vector is all zeros, skip...")
-                #                         continue
-                #                     logging.info(f"Checking AP Vector for {local_name}...")
-                #                     precond_pass = check_learned_ap_vector(data_results, \
-                #                     pred_config['gumbel_temp'], pred_config['decision_b'], predicate_neural_model, curr_pred, local_ent_idx, \
-                #                         self.ae_row_names_dict, final_ae_vec, copy.deepcopy(self._node_feature_to_index), \
-                #                         CFG.device, neg, quantifier, type_comb, thresh=CFG.precond_thresh)
-                #                     if precond_pass:
-                #                         logging.info(f"Passed!!! Add to the final list.")
-                #                         self.learned_ae_pred_info[curr_pred]['ent_idx'][i].append(local_ent_idx)
-                #                         self.learned_ae_pred_info[curr_pred]['ae_vecs'][i].append(final_ae_vec.clone())
-                #                         self.learned_ae_pred_info[curr_pred]['scores'][i].append(learned_guidance.clone())
-                #                         quantifier_str = local_name.split(', ')[0]
-                #                         neg_str = local_name.split(', ')[1].split('-')[0]
-                #                         basic_pred_str = local_name.split(', ')[1].split('-')[1]
-                #                         self.learned_ae_pred_info[curr_pred]['quantifiers'][i].append((quantifier_str, \
-                #                                                         neg_str, basic_pred_str))
-                #             else:
-                #                 # use idx, instead of content, to handel same name type
-                #                 combinded_types_idx = []
-                #                 curr_pred_types_ids = list(range(len(curr_pred_types)))
-                #                 for r in range(1, len(curr_pred_types) + 1):
-                #                     combinded_types_idx += list(itertools.combinations(curr_pred_types_ids, r))
-                #                 for type_comb_idx in combinded_types_idx:
-                #                     # who to quantify
-                #                     type_comb = [curr_pred_types[t] for t in type_comb_idx]
-                #                     predicate_vars = []
-                #                     possible_ent_idx = []
-                #                     for k, t in enumerate(curr_pred.types):
-                #                         if k in type_comb_idx:
-                #                             # this type is in quantifier, no id needed
-                #                             predicate_vars.append(f"?{t.name[:3].lower()}")
-                #                         else:
-                #                             # This type is not quantified, need to specify the ent id in operator
-                #                             # ent_idx is the index of the operated object, in the operator
-                #                             predicate_vars.append(f"?{t.name[:3].lower()}N")
-                #                             possible_ent_idx = list(range(self._max_type_id[t.name]))
-                #                     if len(possible_ent_idx) == 0:
-                #                         logging.info(f"The unquantified type has no choice")
-                #                         basic_pred_name = f"{curr_pred.name}_{i}({','.join(predicate_vars)})"
-                #                         # reset the local ent idx, as this is a new predicate
-                #                         local_ent_idx = []
-                #                         assert "N" not in basic_pred_name, "Should not have N"
-                #                         local_name = gen_pretty_pred_name(basic_pred_name, type_comb, \
-                #                                                         quantifier, neg)
-                #                         logging.info(f" ++++{local_name}++++")
-                #                         typed_quantifier.append((local_name))
-                #                         learned_ae_vector = distill_learned_ae_vector(data_results, \
-                #                                 pred_config['gumbel_temp'], pred_config['decision_b'], pred_model, curr_pred, local_ent_idx, \
-                #                                 self.ae_row_names_dict, copy.deepcopy(self._node_feature_to_index), \
-                #                                     CFG.device, neg, quantifier, type_comb_idx)
-                #                         # no target vector will use entropy
-                #                         learned_guidance = compute_guidance_vector(learned_ae_vector)
-                #                         logging.info(f"Guidance Score: {learned_guidance}")
-                #                         if learned_guidance.sum() < quantified_threshold:
-                #                             final_ae_vec = prob_three2two(learned_ae_vector)
-                #                             logging.info(f"Checking AP Vector for {local_name}...")
-                #                             precond_pass = check_learned_ap_vector(data_results, \
-                #                             pred_config['gumbel_temp'], pred_config['decision_b'], predicate_neural_model, curr_pred, local_ent_idx, \
-                #                             self.ae_row_names_dict, final_ae_vec, copy.deepcopy(self._node_feature_to_index),
-                #                             CFG.device, neg, quantifier, type_comb_idx, thresh=CFG.precond_thresh)
-                #                             if (final_ae_vec==0).all():
-                #                                 logging.info(f"AE Vector is all zeros, skip...")
-                #                                 precond_pass = False
-                #                             if precond_pass:
-                #                                 logging.info(f"Passed!!! Add to the final list.")
-                #                                 self.learned_ae_pred_info[curr_pred]['ent_idx'][i].append(local_ent_idx)
-                #                                 self.learned_ae_pred_info[curr_pred]['ae_vecs'][i].append(final_ae_vec.clone())
-                #                                 self.learned_ae_pred_info[curr_pred]['scores'][i].append(learned_guidance.clone())
-                #                                 quantifier_str = local_name.split(', ')[0]
-                #                                 neg_str = local_name.split(', ')[1].split('-')[0]
-                #                                 basic_pred_str = local_name.split(', ')[1].split('-')[1]
-                #                                 self.learned_ae_pred_info[curr_pred]['quantifiers'][i].append((quantifier_str, \
-                #                                                                 neg_str, basic_pred_str))
-                #                     else:
-                #                         logging.info(f"The unquantified type has >= one choice, checking each one of them...")
-                #                         for loc_ent in possible_ent_idx:
-                #                             # reset the local ent idx, as this is a new predicate
-                #                             # note that ent idx is the index in the action
-                #                             local_ent_idx = [loc_ent]
-                #                             basic_pred_name = f"{curr_pred.name}_{i}({','.join(predicate_vars)})"
-                #                             assert "N" in basic_pred_name, "Should have N"
-                #                             basic_pred_name = basic_pred_name.replace('N', str(loc_ent))
-                #                             local_name = gen_pretty_pred_name(basic_pred_name, type_comb, \
-                #                                                             quantifier, neg)
-                #                             logging.info(f" ++++{local_name}++++")
-                #                             typed_quantifier.append((local_name))
-                #                             learned_ae_vector = distill_learned_ae_vector(data_results, \
-                #                                     pred_config['gumbel_temp'], pred_config['decision_b'], pred_model, curr_pred, local_ent_idx, \
-                #                                     self.ae_row_names_dict, copy.deepcopy(self._node_feature_to_index), \
-                #                                         CFG.device, neg, quantifier, type_comb_idx)
-                #                             # no target vector will use entropy
-                #                             learned_guidance = compute_guidance_vector(learned_ae_vector)
-                #                             logging.info(f"Guidance Score: {learned_guidance}")
-                #                             if learned_guidance.sum() < quantified_threshold:
-                #                                 final_ae_vec = prob_three2two(learned_ae_vector)
-                #                                 logging.info(f"Checking AP Vector for {local_name}...")
-                #                                 precond_pass = check_learned_ap_vector(data_results, \
-                #                                 pred_config['gumbel_temp'], pred_config['decision_b'], pred_model, curr_pred, local_ent_idx, \
-                #                                 self.ae_row_names_dict, final_ae_vec, copy.deepcopy(self._node_feature_to_index),
-                #                                 CFG.device, neg, quantifier, type_comb_idx, thresh=CFG.precond_thresh)
-                #                                 if (final_ae_vec==0).all():
-                #                                     logging.info(f"AE Vector is all zeros, skip...")
-                #                                     precond_pass = False
-                #                                 if precond_pass:
-                #                                     logging.info(f"Passed!!! Add to the final list.")
-                #                                     self.learned_ae_pred_info[curr_pred]['ent_idx'][i].append(local_ent_idx)
-                #                                     self.learned_ae_pred_info[curr_pred]['ae_vecs'][i].append(final_ae_vec.clone())
-                #                                     self.learned_ae_pred_info[curr_pred]['scores'][i].append(learned_guidance.clone())
-                #                                     quantifier_str = local_name.split(', ')[0]
-                #                                     neg_str = local_name.split(', ')[1].split('-')[0]
-                #                                     basic_pred_str = local_name.split(', ')[1].split('-')[1]
-                #                                     self.learned_ae_pred_info[curr_pred]['quantifiers'][i].append((quantifier_str, \
-                #                                                                     neg_str, basic_pred_str))
-                #     logging.info(f"Savings Negated / Quantified version for {curr_pred.name}...")
-                #     with open(self.learned_ae_pred_info[curr_pred]['model_weights'][i].replace("_model_good.pth", "quantified.pkl"), 'wb') as f:
-                #         pkl.dump({'ent_idx': self.learned_ae_pred_info[curr_pred]['ent_idx'][i],
-                #                   'ae_vecs': self.learned_ae_pred_info[curr_pred]['ae_vecs'][i],
-                #                   'scores': self.learned_ae_pred_info[curr_pred]['scores'][i],
-                #                   'quantifiers': self.learned_ae_pred_info[curr_pred]['quantifiers'][i]}, f)
+                # 4.3 Check the Negated / Quantified version
+                if CFG.neupi_w_negation or CFG.neupi_w_quantifiers:
+                    if curr_pred.arity == 1:
+                        logging.info("Skipping Negated / Quantified version for unary predicate...")
+                        # only support binary + quantifier now
+                        continue
+                    if os.path.exists(self.learned_ae_pred_info[curr_pred]['model_weights'][i].replace("_model_good.pth", "quantified.pkl")):
+                        logging.info("Negated / Quantified version already exists, loading...")
+                        with open(self.learned_ae_pred_info[curr_pred]['model_weights'][i].replace("_model_good.pth", "quantified.pkl"), 'rb') as f:
+                            quantified_info = pkl.load(f)
+                        for m in range(1, len(quantified_info['ent_idx'])):
+                            logging.info(f"Negated / Quantified version {m}...")
+                            logging.info(f"Quantifier: {quantified_info['quantifiers'][m]}")
+                            logging.info(f"AE Vector {m}: {two2one(quantified_info['ae_vecs'][m])}")
+                            # skipping the first one, as it is the original one
+                            self.learned_ae_pred_info[curr_pred]['ent_idx'][i].append(quantified_info['ent_idx'][m])
+                            self.learned_ae_pred_info[curr_pred]['ae_vecs'][i].append(quantified_info['ae_vecs'][m])
+                            self.learned_ae_pred_info[curr_pred]['scores'][i].append(quantified_info['scores'][m])
+                            self.learned_ae_pred_info[curr_pred]['quantifiers'][i].append(quantified_info['quantifiers'][m])
+                        continue
+                    logging.info("Checking Negated / Quantified version...")
+                    curr_pred_types = [types.name for types in curr_pred.types]
+                    typed_quantifier = []
+                    w_negation = [False] if not CFG.neupi_w_negation else [True, False]
+                    quantifiers = [''] if not CFG.neupi_w_quantifiers else ['', 'ForAll', 'Exists']
+                    pred_model_weights = torch.load(self.learned_ae_pred_info[curr_pred]['model_weights'][i])
+                    pred_model = setup_neupi_mlp_net(example_dataset,
+                                curr_pred.arity,
+                                pred_config['architecture'],
+                                self._node_feature_to_index,
+                                self._edge_feature_to_index)
+                    pred_model.load_state_dict(pred_model_weights)
+                    if CFG.neupi_quantify_dataset != 1.0:
+                        logging.info(f"Quantifying Dataset: {CFG.neupi_quantify_dataset}")
+                        self._rng.shuffle(data)
+                    quantify_data = data[:int(len(data) * CFG.neupi_quantify_dataset)]
+                    _, val_dataset = self.gen_graph_data(quantify_data, curr_pred, ent_idx, \
+                    curr_ae_vector.clone())
+                    val_dataloader = DataLoader(val_dataset,
+                        batch_size=1, # always use 1 for memory
+                        shuffle=False,
+                        num_workers=4,
+                        pin_memory=False,
+                        collate_fn=action_graph_batch_collate)
+                    # just inference once and use the outputs
+                    logging.info("Inference for the current predicate model...")
+                    data_results = inferece_dataloader(val_dataloader, pred_model, \
+                                                        pred_config['gumbel_temp'], \
+                                                        pred_config['decision_b'], \
+                                                        CFG.device)
+                    quantified_threshold = pred_config['quantified_guidance_thresh'] if "quantified_guidance_thresh" \
+                                            in pred_config else pred_config['guidance_thresh']
+                    for neg in w_negation:
+                        logging.info(f"Negation: {neg}")
+                        for quantifier in quantifiers:
+                            if quantifier == '':
+                                local_ent_idx = ent_idx
+                                logging.info(f"No Quantifier, using the original ent idx: {local_ent_idx}")
+                                if not neg:
+                                    continue
+                                type_comb = []
+                                local_name = gen_pretty_pred_name(basic_pred_name, type_comb, \
+                                                                quantifier, neg)
+                                logging.info(f" ++++{local_name}++++")
+                                typed_quantifier.append((local_name))
+                                learned_ae_vector = distill_learned_ae_vector(data_results, \
+                                    pred_config['gumbel_temp'], pred_config['decision_b'], pred_model, curr_pred, local_ent_idx, \
+                                    self.ae_row_names_dict, copy.deepcopy(self._node_feature_to_index), \
+                                        CFG.device, neg, quantifier, type_comb)
+                                # no target vector will use entropy
+                                learned_guidance = compute_guidance_vector(learned_ae_vector)
+                                logging.info(f"Guidance Score: {learned_guidance}")
+                                if learned_guidance.sum() < quantified_threshold:
+                                    final_ae_vec = prob_three2two(learned_ae_vector)
+                                    if (final_ae_vec==0).all():
+                                        logging.info(f"AE Vector is all zeros, skip...")
+                                        continue
+                                    logging.info(f"Checking AP Vector for {local_name}...")
+                                    precond_pass = check_learned_ap_vector(data_results, \
+                                    pred_config['gumbel_temp'], pred_config['decision_b'], predicate_neural_model, curr_pred, local_ent_idx, \
+                                        self.ae_row_names_dict, final_ae_vec, copy.deepcopy(self._node_feature_to_index), \
+                                        CFG.device, neg, quantifier, type_comb, thresh=CFG.precond_thresh)
+                                    if precond_pass:
+                                        logging.info(f"Passed!!! Add to the final list.")
+                                        self.learned_ae_pred_info[curr_pred]['ent_idx'][i].append(local_ent_idx)
+                                        self.learned_ae_pred_info[curr_pred]['ae_vecs'][i].append(final_ae_vec.clone())
+                                        self.learned_ae_pred_info[curr_pred]['scores'][i].append(learned_guidance.clone())
+                                        quantifier_str = local_name.split(', ')[0]
+                                        neg_str = local_name.split(', ')[1].split('-')[0]
+                                        basic_pred_str = local_name.split(', ')[1].split('-')[1]
+                                        self.learned_ae_pred_info[curr_pred]['quantifiers'][i].append((quantifier_str, \
+                                                                        neg_str, basic_pred_str))
+                            else:
+                                # use idx, instead of content, to handel same name type
+                                combinded_types_idx = []
+                                curr_pred_types_ids = list(range(len(curr_pred_types)))
+                                for r in range(1, len(curr_pred_types) + 1):
+                                    combinded_types_idx += list(itertools.combinations(curr_pred_types_ids, r))
+                                for type_comb_idx in combinded_types_idx:
+                                    # who to quantify
+                                    type_comb = [curr_pred_types[t] for t in type_comb_idx]
+                                    predicate_vars = []
+                                    possible_ent_idx = []
+                                    for k, t in enumerate(curr_pred.types):
+                                        if k in type_comb_idx:
+                                            # this type is in quantifier, no id needed
+                                            predicate_vars.append(f"?{t.name[:3].lower()}")
+                                        else:
+                                            # This type is not quantified, need to specify the ent id in operator
+                                            # ent_idx is the index of the operated object, in the operator
+                                            predicate_vars.append(f"?{t.name[:3].lower()}N")
+                                            possible_ent_idx = list(range(self._max_type_id[t.name]))
+                                    if len(possible_ent_idx) == 0:
+                                        logging.info(f"The unquantified type has no choice")
+                                        basic_pred_name = f"{curr_pred.name}_{i}({','.join(predicate_vars)})"
+                                        # reset the local ent idx, as this is a new predicate
+                                        local_ent_idx = []
+                                        assert "N" not in basic_pred_name, "Should not have N"
+                                        local_name = gen_pretty_pred_name(basic_pred_name, type_comb, \
+                                                                        quantifier, neg)
+                                        logging.info(f" ++++{local_name}++++")
+                                        typed_quantifier.append((local_name))
+                                        learned_ae_vector = distill_learned_ae_vector(data_results, \
+                                                pred_config['gumbel_temp'], pred_config['decision_b'], pred_model, curr_pred, local_ent_idx, \
+                                                self.ae_row_names_dict, copy.deepcopy(self._node_feature_to_index), \
+                                                    CFG.device, neg, quantifier, type_comb_idx)
+                                        # no target vector will use entropy
+                                        learned_guidance = compute_guidance_vector(learned_ae_vector)
+                                        logging.info(f"Guidance Score: {learned_guidance}")
+                                        if learned_guidance.sum() < quantified_threshold:
+                                            final_ae_vec = prob_three2two(learned_ae_vector)
+                                            logging.info(f"Checking AP Vector for {local_name}...")
+                                            precond_pass = check_learned_ap_vector(data_results, \
+                                            pred_config['gumbel_temp'], pred_config['decision_b'], predicate_neural_model, curr_pred, local_ent_idx, \
+                                            self.ae_row_names_dict, final_ae_vec, copy.deepcopy(self._node_feature_to_index),
+                                            CFG.device, neg, quantifier, type_comb_idx, thresh=CFG.precond_thresh)
+                                            if (final_ae_vec==0).all():
+                                                logging.info(f"AE Vector is all zeros, skip...")
+                                                precond_pass = False
+                                            if precond_pass:
+                                                logging.info(f"Passed!!! Add to the final list.")
+                                                self.learned_ae_pred_info[curr_pred]['ent_idx'][i].append(local_ent_idx)
+                                                self.learned_ae_pred_info[curr_pred]['ae_vecs'][i].append(final_ae_vec.clone())
+                                                self.learned_ae_pred_info[curr_pred]['scores'][i].append(learned_guidance.clone())
+                                                quantifier_str = local_name.split(', ')[0]
+                                                neg_str = local_name.split(', ')[1].split('-')[0]
+                                                basic_pred_str = local_name.split(', ')[1].split('-')[1]
+                                                self.learned_ae_pred_info[curr_pred]['quantifiers'][i].append((quantifier_str, \
+                                                                                neg_str, basic_pred_str))
+                                    else:
+                                        logging.info(f"The unquantified type has >= one choice, checking each one of them...")
+                                        for loc_ent in possible_ent_idx:
+                                            # reset the local ent idx, as this is a new predicate
+                                            # note that ent idx is the index in the action
+                                            local_ent_idx = [loc_ent]
+                                            basic_pred_name = f"{curr_pred.name}_{i}({','.join(predicate_vars)})"
+                                            assert "N" in basic_pred_name, "Should have N"
+                                            basic_pred_name = basic_pred_name.replace('N', str(loc_ent))
+                                            local_name = gen_pretty_pred_name(basic_pred_name, type_comb, \
+                                                                            quantifier, neg)
+                                            logging.info(f" ++++{local_name}++++")
+                                            typed_quantifier.append((local_name))
+                                            learned_ae_vector = distill_learned_ae_vector(data_results, \
+                                                    pred_config['gumbel_temp'], pred_config['decision_b'], pred_model, curr_pred, local_ent_idx, \
+                                                    self.ae_row_names_dict, copy.deepcopy(self._node_feature_to_index), \
+                                                        CFG.device, neg, quantifier, type_comb_idx)
+                                            # no target vector will use entropy
+                                            learned_guidance = compute_guidance_vector(learned_ae_vector)
+                                            logging.info(f"Guidance Score: {learned_guidance}")
+                                            if learned_guidance.sum() < quantified_threshold:
+                                                final_ae_vec = prob_three2two(learned_ae_vector)
+                                                logging.info(f"Checking AP Vector for {local_name}...")
+                                                precond_pass = check_learned_ap_vector(data_results, \
+                                                pred_config['gumbel_temp'], pred_config['decision_b'], pred_model, curr_pred, local_ent_idx, \
+                                                self.ae_row_names_dict, final_ae_vec, copy.deepcopy(self._node_feature_to_index),
+                                                CFG.device, neg, quantifier, type_comb_idx, thresh=CFG.precond_thresh)
+                                                if (final_ae_vec==0).all():
+                                                    logging.info(f"AE Vector is all zeros, skip...")
+                                                    precond_pass = False
+                                                if precond_pass:
+                                                    logging.info(f"Passed!!! Add to the final list.")
+                                                    self.learned_ae_pred_info[curr_pred]['ent_idx'][i].append(local_ent_idx)
+                                                    self.learned_ae_pred_info[curr_pred]['ae_vecs'][i].append(final_ae_vec.clone())
+                                                    self.learned_ae_pred_info[curr_pred]['scores'][i].append(learned_guidance.clone())
+                                                    quantifier_str = local_name.split(', ')[0]
+                                                    neg_str = local_name.split(', ')[1].split('-')[0]
+                                                    basic_pred_str = local_name.split(', ')[1].split('-')[1]
+                                                    self.learned_ae_pred_info[curr_pred]['quantifiers'][i].append((quantifier_str, \
+                                                                                    neg_str, basic_pred_str))
+                    logging.info(f"Savings Negated / Quantified version for {curr_pred.name}...")
+                    with open(self.learned_ae_pred_info[curr_pred]['model_weights'][i].replace("_model_good.pth", "quantified.pkl"), 'wb') as f:
+                        pkl.dump({'ent_idx': self.learned_ae_pred_info[curr_pred]['ent_idx'][i],
+                                    'ae_vecs': self.learned_ae_pred_info[curr_pred]['ae_vecs'][i],
+                                    'scores': self.learned_ae_pred_info[curr_pred]['scores'][i],
+                                    'quantifiers': self.learned_ae_pred_info[curr_pred]['quantifiers'][i]}, f)
         return trajectories, init_atom_traj
+
+     
 
     def _get_predicate_identifier(
         self, traj: List ,predicate: Predicate
@@ -2371,16 +2211,7 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
         search_record = {}
         best_score = float("inf")
         s = time.time()
-        # what if use all?
-        # for idx, p_pred in enumerate(possible_predicates):
-        #     final_predicates.append(p_pred)
-        #     last_ent_idx.append(possible_pred_entidx[idx])
-        #     col_idx = possible_cols[idx]
-        #     last_matrix = torch.cat([last_matrix, huge_ae_matrixe[:, col_idx:col_idx+1]], dim=1)
-        # logging.info(f"Trying all predicates: {final_predicates}")
-        # score = score_function.evaluate(last_matrix, final_predicates, last_ent_idx, CFG.strips_learner)
-        # logging.info(f"Predicate set {final_predicates} has score {score} in {time.time()-s} seconds.")
-        # return set(final_predicates), last_matrix, final_predicates, last_ent_idx
+       
         if CFG.neupi_bug:
             # just add one by one
             for idx, p_pred in enumerate(possible_predicates):
@@ -2459,14 +2290,19 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                     last_matrix = last_matrix[:, :-1]
                     last_ent_idx = last_ent_idx[:-1]
                     level -= 1
-                while True:
+                wrong_counter = 0
+                while  wrong_counter<=30:
                     random_idx = random.randint(0, len(possible_predicates)-1)
                     random_pred = possible_predicates[random_idx]
                     if random_pred not in final_predicates and random_pred not in imagined_pred:
                         imagined_pred.append(random_pred)
                         imagined_search = True
                         break
-                logging.info(f"Adding Imagined Predicate {random_pred}...")
+                    else:
+                        wrong_counter += 1
+                if wrong_counter>=30:
+                    logging.info("select predicate fail,need more predicates")
+                    return set(final_predicates), last_matrix, final_predicates, last_ent_idx
                 final_predicates.append(random_pred)
                 col_idx_add = possible_cols[random_idx]
                 last_matrix = torch.cat([last_matrix, huge_ae_matrixe[:, col_idx_add:col_idx_add+1]], dim=1)
@@ -2873,11 +2709,14 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
             raise ApproachTimeout(e.args[0], e.info)
         return intermidiate
 
-
-
-
-    def gen_sat_vec_from_seed(self, pred: DummyPredicate, seed_rows: List[torch.Tensor]) -> List[torch.Tensor]:
-        """从 seed_rows 中筛选满足 constraint 的向量，全部返回，不限制数量。"""
+    def gen_sat_vec_from_seed(
+                self,
+                pred: DummyPredicate,
+                rows_with_names: list[tuple[str, torch.Tensor]],
+        ) -> list[tuple[str, torch.Tensor]]:
+        """Return (pddl_name, sat_matrix) pairs instead of bare matrices."""
+        """Filter seed rows by constraints, return only the satisfying vectors.
+        Also store failing rows in self._bad_history[pred]."""
         constraints = self.learned_ae_pred_info[pred]['constraints']
         width = 1
         height = len(self.ae_row_names)
@@ -2914,14 +2753,129 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
             mat[:, 1] = (row == 2).long()  # delete
             return mat
 
-        seed_mats = [_row_to_mat(r) for r in seed_rows if (r != 0).any()]
-        sat_vectors = []
+            
+        sat_vectors: list[tuple[str, torch.Tensor]] = []
 
-        for i, vec in enumerate(seed_mats):
-            if _is_vector_satisfying(vec):
-                logging.info(f"[{i}] ✓ Seed vector satisfies constraint.")
-                sat_vectors.append(vec)
+        for idx, (pddl_name, row_vec) in enumerate(rows_with_names):
+            if (row_vec == 0).all():
+                logging.info(f"[{idx}]   · skipped empty row ({pddl_name})")
+                continue
+
+            mat = _row_to_mat(row_vec)
+
+            if _is_vector_satisfying(mat):
+                logging.info(f"[{idx}] ✓ Seed vector satisfies constraints ({pddl_name}).")
+                sat_vectors.append((pddl_name, mat))  
             else:
-                logging.info(f"[{i}] ✗ Seed vector does NOT satisfy constraint.")
+                logging.info(f"[{idx}] ✗ Seed vector violates constraints ({pddl_name}).")
+                # ---- record in bad history --------------------------------
+                # self._bad_history[pred].append({
+                #     "name":   pddl_name,
+                #     "row":    row_vec.clone().cpu(),   # store a safe copy
+                #     "reason": f"violates constraints:",
+                # })
 
         return sat_vectors
+
+
+    def gen_ae_vectors4pred_pddl(
+        self,
+        curr_pred: DummyPredicate,
+        ent_idx: List[int],
+        pred_save_path: str,
+        pred_config: Dict,
+        data: List[...],
+        seed_vec_pairs: list[tuple[str, torch.Tensor]],
+        iteration: int,
+    ) -> Tuple[List[torch.Tensor], List[torch.Tensor], List[float],
+            List[str], List[str]]:
+        """
+        Trains predicate-specific AE models using provided seed vectors.
+
+        Returns:
+            - out_vecs: learned AE vectors
+            - out_guides: dummy guidance vectors
+            - out_losses: validation losses
+            - out_paths: model paths
+            - out_names: original PDDL names for each seed vector
+        """
+
+        seed_names, seed_vecs = zip(*seed_vec_pairs)
+        seed_names = list(seed_names)
+        seed_vecs = list(seed_vecs)
+        N = len(seed_vecs)
+
+        out_vecs   = [None] * N
+        out_guides = [None] * N
+        out_losses = [None] * N
+        out_paths  = [None] * N
+        out_names  = [None] * N
+
+        use_parallel = CFG.neupi_parallel_invention and N > 1
+
+        if use_parallel:
+            logging.info("[%s] Launching %d processes for parallel training",
+                        curr_pred.name, N)
+
+            queue, procs = Queue(), []
+
+            for idx, (name, sv) in enumerate(zip(seed_names, seed_vecs)):
+                train_ds, val_ds = self.gen_graph_data(data, curr_pred, ent_idx, sv)
+
+                p = Process(target=train_val_model_in_parallel, args=(
+                    curr_pred, ent_idx, pred_save_path,
+                    sv,                           # 2-D seed matrix
+                    iteration, pred_config, queue,
+                    self.ae_row_names_dict,
+                    self._node_feature_to_index,
+                    self._edge_feature_to_index,
+                    train_ds, val_ds,
+                    idx,CFG.wandb_run_name))
+                p.start()
+                procs.append(p)
+
+            for p in procs:
+                p.join()
+
+            while not queue.empty():
+                idx,  model_path, val_loss = queue.get()
+                ae_vec   = torch.load(model_path.replace("model", "ae_vector"))
+                guidance = torch.load(model_path.replace("model", "guidance"))
+
+                out_vecs[idx]   = ae_vec.clone()
+                out_guides[idx] = guidance.clone()
+                out_losses[idx] = val_loss
+                out_paths[idx]  = model_path
+                out_names[idx]  = "unkonwn"
+
+        else:
+            for idx, (name, sv) in enumerate(zip(seed_names, seed_vecs)):
+                logging.info("[%s] Serial train on seed %d/%d (%s)",
+                            curr_pred.name, idx + 1, N, name)
+
+                train_ds, val_ds = self.gen_graph_data(data, curr_pred, ent_idx, sv)
+
+                model = setup_neupi_mlp_net(
+                    self.learned_ae_pred_info[curr_pred]['example_dataset'],
+                    curr_pred.arity,
+                    pred_config['architecture'],
+                    self._node_feature_to_index,
+                    self._edge_feature_to_index)
+
+                model_path, val_loss = train_val_model_single(
+                    curr_pred, ent_idx, pred_save_path,
+                    sv, iteration, pred_config,
+                    self.ae_row_names_dict,
+                    self._node_feature_to_index,
+                    self._edge_feature_to_index,
+                    train_ds, val_ds, idx, CFG.wandb_run_name)
+
+                guidance = torch.zeros(len(self.ae_row_names))
+
+                out_vecs[idx]   = sv.clone()
+                out_guides[idx] = guidance
+                out_losses[idx] = val_loss
+                out_paths[idx]  = model_path
+                out_names[idx]  = name
+
+        return out_vecs, out_guides, out_losses, out_paths, out_names

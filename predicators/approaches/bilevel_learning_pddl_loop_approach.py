@@ -271,6 +271,7 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
         # load pred settings
         assert os.path.exists(CFG.neupi_pred_config), "Pred Settings Not Found"
         config_dict = yaml.safe_load(open(CFG.neupi_pred_config, 'r'))
+        assert os.path.exists(CFG.pred_pddl_config), "PDDL Config Not Found"
         self.pred_config = config_dict['config']
         self.final_op = config_dict['final_op']
         self.neupi_non_effect_predicates = config_dict['neupi_non_effect_predicates']
@@ -1630,7 +1631,6 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
         """Learn the Neural predicates by Action Effect Martix Identification."""
         logging.info("Constructing NeuPi Data...")
         total_mcts_iterations = 0
-        num_vectors_to_generate_list = self.pred_config[0]['num_vectors_to_generate_list']
         # 1. Generate data from the dataset. This is general
         data, trajectories, init_atom_traj,demo_prompt = self._generate_data_from_dataset(dataset)
         # 2. Setup the input fields for the neural predicate, this is general
@@ -1677,11 +1677,13 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
             self.learned_ae_pred_info = copy.deepcopy(self._origin_pred_info)
         all_pred_pass = -1
         local_iteration = 0
-        while all_pred_pass !=1:
+        while_iteration = 0
+        MAX_LOCAL_ITERATION = 3
+        while all_pred_pass !=1 and while_iteration < MAX_LOCAL_ITERATION:
             all_pred_pass = 1
             skipped_count = 0
             to_be_ivnted_count = 0
-            
+            while_iteration += 1
             self._llm_generator.update_bad_history(self._bad_history)
             # Matrix shape = (|preds| , |actions|).  0=no change, 1=add, 2=del
             llm_effect_bank: torch.Tensor = self._llm_generator.generate()    # <- ONE OpenAI call
@@ -2576,7 +2578,7 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
         if not CFG.load_neupi_from_json:
             select_scuess = False
             iter_count = 0
-            MAX_ITER = 10 #MAX number of iteration for pddl loop
+            MAX_ITER = 2 #MAX number of iteration for pddl loop
             all_target_preds: Set[Predicate] = {
             pred for pred, info in self.learned_ae_pred_info.items()
             if not info['provided']                   # <- skip the “provided” ones
@@ -2584,17 +2586,19 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
             self._llm_generator = PDDLEffectVectorLoopGenerator(                  
                     target_preds   = all_target_preds,
                     sorted_options = list(self._sorted_options),
-                    domain_desc    = self.pred_config[0]['domain_desc'],
+                    domain_desc    = "",
                     other_predicates = self._initial_predicates,
-                    demo_prompt    = "") #demo prompt will be updated inside the loop
+                    demo_prompt    = "",
+                    pddl_config_path = CFG.pred_pddl_config) #demo prompt will be updated inside the loop
             s_all = time.time()
+            total_time = 0
             logging.info("Starting Neural Predicate Invention Loop...")
             while iter_count<MAX_ITER and not select_scuess:
                 s = time.time()
                 learning_trajectories, init_atom_traj = self.learn_neural_predicates(dataset,iter_count)
                 iter_count +=1
                 logging.info(f"One Iteration of Neural Predicate Invention Done in {time.time()-s} seconds.")
-                
+                total_time += time.time()-s
                 if CFG.neupi_save_init_atom_dataset:
                     save_path = utils.get_approach_save_path_str()
                     with open(f"{save_path}_.init_atom_traj", "wb") as f:
@@ -2656,7 +2660,7 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                     logging.info("update the demo prompt")
                     logging.info(demo_prompt)
                     self._demo_prompt = demo_prompt
-            logging.info(f"Neural Predicate Invention Loop Done in {time.time()-s_all} seconds.")
+            logging.info(f"Neural Predicate Invention Loop Done in {total_time} seconds.")
         else:       
             logging.info("Loading Neural Predicates from JSON...")
             self.load_from_json()
@@ -3056,7 +3060,7 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                 self._bad_history[pred].append({
                     "name":   pddl_name,
                     "row":    row_vec.clone().cpu(),   # store a safe copy
-                    "reason": f"violates {constraints}",
+                    "reason": f"violates constraints",
                 })
 
         return sat_vectors

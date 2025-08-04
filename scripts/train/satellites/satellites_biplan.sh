@@ -2,7 +2,7 @@ export FD_EXEC_PATH=ext/downward
 export PYTHONHASHSEED=0
 export CUBLAS_WORKSPACE_CONFIG=:4096:8
 
-for seed in 0
+for seed in 0 1 2 3 4
 do
     echo "Running Seed $seed --------------------------------------"
     # Record start time
@@ -13,7 +13,7 @@ do
         --disable_harmlessness_check True \
         --excluded_predicates "ViewClear,IsCalibrated,HasChemX,HasChemY,Sees" \
         --neupi_pred_config "predicators/config/satellites/pred.yaml" \
-        --neupi_gt_ae_matrix True \
+        --neupi_gt_ae_matrix False \
         --sesame_task_planner "fdsat" \
         --exclude_domain_feat "none" \
         --neupi_do_normalization False \

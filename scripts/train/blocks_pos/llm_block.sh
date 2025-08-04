@@ -2,7 +2,7 @@ export FD_EXEC_PATH=ext/downward
 export PYTHONHASHSEED=0
 export CUBLAS_WORKSPACE_CONFIG=:4096:8
 
-for seed in 0
+for seed in 0 
 do
     echo "Running Seed 0 --------------------------------------"
     # Record start time
@@ -18,6 +18,7 @@ do
         --domain_sampler_data_filter "none" \
         --sesame_task_planner "fdsat" \
         --num_train_tasks 500 \
+        --load_data \
         --timeout 5 \
         --neupi_do_normalization True \
         --neupi_entropy_w 0.0 \

@@ -11,6 +11,8 @@ from predicators.datasets.generate_atom_trajs_with_vlm import \
     create_ground_atom_data_from_labelled_txt, \
     create_ground_atom_data_from_saved_img_trajs
 from predicators.datasets.ground_atom_data import create_ground_atom_data
+from predicators.datasets.direct_real_world_demo import \
+    create_direct_real_world_demo_data
 from predicators.envs import BaseEnv
 from predicators.settings import CFG
 from predicators.structs import Dataset, ParameterizedOption, Predicate, Task
@@ -85,6 +87,8 @@ def create_dataset(env: BaseEnv, train_tasks: List[Task],
         # we want to instantiate our own 'dummy' VLM.
         return create_ground_atom_data_from_saved_img_trajs(
             env, train_tasks, known_predicates, known_options)
+    if CFG.offline_data_method == "direct_real_world_demo":
+        return create_direct_real_world_demo_data(env, train_tasks, known_options)
     if CFG.offline_data_method == "empty":
         return Dataset([])
     raise NotImplementedError("Unrecognized dataset method.")

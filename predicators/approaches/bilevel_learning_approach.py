@@ -1600,6 +1600,10 @@ class BilevelLearningApproach(NSRTLearningApproach):
                                             len(self.ae_row_names),
                                             pred_config['search_tree_max_level'], \
                                             pred_config['guidance_thresh'])
+            num_vectors_to_generate = pred_config.get(
+                "num_vectors_to_generate"
+            )
+            logging.info(f"Number of vectors to generate for {curr_pred.name}: {num_vectors_to_generate}")
             self.learned_ae_pred_info[curr_pred]['model'] = predicate_neural_model # save the model template
             # The predicate is trained and will be skipped
             # Or, we directly load it
@@ -1667,6 +1671,9 @@ class BilevelLearningApproach(NSRTLearningApproach):
                 logging.info(f"***************Bi-level Optimizing ({curr_pred.name})***************")
                 for iteration in range(pred_config['num_iter']):
                     logging.info(f"-----Iteration: {iteration} ({curr_pred.name})------")
+                    if(num_vectors_to_generate==0):
+                        logging.info(f"no need to generate vectors for {curr_pred.name}, skipping...")
+                        break
                     s_time = time.time()
                     iter_ae_vectors, iter_guidance_vecs, iter_val_loss, model_weight_paths = \
                         self.gen_ae_vectors4pred(iteration, curr_pred, ent_idx, pred_save_path, \
@@ -1725,6 +1732,9 @@ class BilevelLearningApproach(NSRTLearningApproach):
                         value = learned_guidance.numpy()
                         symbolic_search_model.update_value(state, value)
                     logging.info(f"Till this iteration, MCTS iterations: {symbolic_search_model.get_iteration_count()}")
+                    if(len(self.learned_ae_pred_info[curr_pred]['ae_vecs']) >= num_vectors_to_generate):
+                        logging.info(f"Got enough vectors for {curr_pred.name}, stopping...")
+                        break
                 
             total_mcts_iterations += symbolic_search_model.get_iteration_count()
             logging.info(f"******************Bi-level Optimization Done for {curr_pred.name}! Summary:******************")
@@ -2329,13 +2339,19 @@ class BilevelLearningApproach(NSRTLearningApproach):
                     last_matrix = last_matrix[:, :-1]
                     last_ent_idx = last_ent_idx[:-1]
                     level -= 1
-                while True:
+                wrong_counter = 0
+                while  wrong_counter<=30:
                     random_idx = random.randint(0, len(possible_predicates)-1)
                     random_pred = possible_predicates[random_idx]
                     if random_pred not in final_predicates and random_pred not in imagined_pred:
                         imagined_pred.append(random_pred)
                         imagined_search = True
                         break
+                    else:
+                        wrong_counter += 1
+                if wrong_counter>=30:
+                    logging.info("cannot find any new imagined predicate, stop searching.")
+                    return set(final_predicates), last_matrix, final_predicates, last_ent_idx
                 logging.info(f"Adding Imagined Predicate {random_pred}...")
                 final_predicates.append(random_pred)
                 col_idx_add = possible_cols[random_idx]

@@ -12,17 +12,15 @@ do
         --seed $seed --offline_data_method "demo" \
         --excluded_predicates "ViewClear,IsCalibrated,HasChemX,HasChemY,Sees" \
         --exclude_domain_feat "none" \
-        --domain_sampler_data_filter "none" \
         --num_train_tasks 500 \
         --load_data \
         --gnn_layer_size 128 \
         --gnn_batch_size 512 \
         --gnn_option_policy_solve_with_shooting True \
         --timeout 5 \
-        --load_approach \
-        --ivntr_nsrt_path saved_approaches/final/satellites/ivntr_${seed}/satellites__ivntr__${seed}__ViewClear,IsCalibrated,HasChemX,HasChemY,Sees___aesuperv_False__.saved.neupi_info \
+        --ivntr_nsrt_path saved_approaches/demo/satellites/ivntr_${seed}/satellites__ivntr__${seed}__ViewClear,IsCalibrated,HasChemX,HasChemY,Sees___aesuperv_False__.saved.neupi_info \
         --approach_dir "saved_approaches/final/satellites/tf_policy_$seed" \
-        --log_file logs/final/satellites/sim/tf_policy_ood_$seed.log; then
+        --log_file logs/satellites/tf_policy_ood_$seed.log; then
         echo "Seed $seed completed successfully."
     else
         echo "Seed $seed encountered an error."
@@ -50,17 +48,16 @@ do
         --excluded_predicates "ViewClear,IsCalibrated,HasChemX,HasChemY,Sees" \
         --num_train_tasks 500 \
         --exclude_domain_feat "none" \
-        --domain_sampler_data_filter "none" \
         --load_data \
+        --load_approach \
         --gnn_layer_size 128 \
         --gnn_batch_size 512 \
-        --load_approach \
         --in_domain_test True \
         --gnn_option_policy_solve_with_shooting True \
         --timeout 5 \
-        --ivntr_nsrt_path saved_approaches/final/satellites/ivntr_${seed}/satellites__ivntr__${seed}__ViewClear,IsCalibrated,HasChemX,HasChemY,Sees___aesuperv_False__.saved.neupi_info \
+        --ivntr_nsrt_path saved_approaches/demo/satellites/ivntr_${seed}/satellites__ivntr__${seed}__ViewClear,IsCalibrated,HasChemX,HasChemY,Sees___aesuperv_False__.saved.neupi_info \
         --approach_dir "saved_approaches/final/satellites/tf_policy_$seed" \
-        --log_file logs/final/satellites/sim/tf_policy_in_domain_$seed.log; then
+        --log_file logs/satellites/tf_policy_in_domain_$seed.log; then
         echo "Seed $seed completed successfully."
     else
         echo "Seed $seed encountered an error."

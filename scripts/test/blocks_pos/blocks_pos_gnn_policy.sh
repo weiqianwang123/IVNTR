@@ -2,7 +2,7 @@ export FD_EXEC_PATH=ext/downward
 export PYTHONHASHSEED=0
 export CUBLAS_WORKSPACE_CONFIG=:4096:8
 
-for seed in 0 1 2 3 4
+for seed in 0 
 do
     echo "Running Seed $seed --------------------------------------"
     # Record start time
@@ -20,10 +20,9 @@ do
         --gnn_option_policy_solve_with_shooting True \
         --timeout 5 \
         --gnn_do_normalization True \
-        --load_approach \
         --approach_dir "saved_approaches/final/blocks_pos/gnn_policy_$seed" \
         --ivntr_nsrt_path saved_approaches/final/blocks_pos/ivntr_${seed}/blocks_onclear__ivntr__${seed}__On,OnTable,GripperOpen,Holding,Clear___aesuperv_False__.saved.neupi_info \
-        --log_file logs/final/blocks_pos/sim/gnn_policy_ood_$seed.log; then
+        --log_file logs/blocks_pos/gnn_policy_ood_$seed.log; then
         echo "Seed $seed completed successfully."
     else
         echo "Seed $seed encountered an error."
@@ -62,7 +61,7 @@ do
         --in_domain_test True \
         --approach_dir "saved_approaches/final/blocks_pos/gnn_policy_$seed" \
         --ivntr_nsrt_path saved_approaches/final/blocks_pos/ivntr_${seed}/blocks_onclear__ivntr__${seed}__On,OnTable,GripperOpen,Holding,Clear___aesuperv_False__.saved.neupi_info \
-        --log_file logs/final/blocks_pos/sim/gnn_policy_in_domain_$seed.log; then
+        --log_file logs/blocks_pos/gnn_policy_in_domain_$seed.log; then
         echo "Seed $seed completed successfully."
     else
         echo "Seed $seed encountered an error."

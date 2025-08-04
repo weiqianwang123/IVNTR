@@ -2,7 +2,7 @@ export FD_EXEC_PATH=ext/downward
 export PYTHONHASHSEED=0
 export CUBLAS_WORKSPACE_CONFIG=:4096:8
 
-for seed in 0
+for seed in 0 1 2 3 4
 do
     echo "Running Seed 0 --------------------------------------"
     # Record start time
@@ -13,6 +13,7 @@ do
         --disable_harmlessness_check True \
         --excluded_predicates "On,OnTable,GripperOpen,Holding,Clear" \
         --neupi_pred_config "predicators/config/blocks_onclear/pred.yaml" \
+        --pred_pddl_config "predicators/config/blocks_onclear/pddl.json" \
         --neupi_gt_ae_matrix False \
         --exclude_domain_feat "none" \
         --domain_sampler_data_filter "none" \
