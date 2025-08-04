@@ -9,6 +9,7 @@ __pycache__
 *.csv
 *.zip
 *.so
+*.pth
 build
 dist
 pylint_recursive.py
@@ -28,7 +29,9 @@ tests/_fake_results
 sas_plan
 .env.local
 Real-World-Data/
-*.pth
+scripts/weights/
+table_empty_transformer.pth
+table_empty_transformer.pth
 # Jetbrains IDEs
 .idea/
 wandb/
