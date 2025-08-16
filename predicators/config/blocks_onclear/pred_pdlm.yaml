@@ -120,7 +120,7 @@ config:
     matrix_vec_try: 100
     search_tree_max_level: 1
     guidance_thresh: 0.01
-    loss_thresh: 0.005
+    loss_thresh: 0.05
     skip_train: False
 
   - name: "neural_b_p5"

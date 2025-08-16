@@ -56,7 +56,7 @@ from predicators.structs import Dataset, GroundAtom, GroundAtomTrajectory, LowLe
 from predicators.structs import NSRT, PNAD, GroundAtomTrajectory, \
     LowLevelTrajectory, ParameterizedOption, Predicate, Segment, Task
 
-from predicators.llm.llm_pdlm import LLMEffectVectorGenerator,PDDLEffectVectorGenerator,constraints_to_vector
+from predicators.llm.llm_no_semantic import LLMEffectVectorGenerator,PDDLEffectVectorGenerator,constraints_to_vector
 
 
 _Output = TypeVar("_Output")  # a generic type for the output of this GNN
@@ -400,7 +400,7 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
 
     @classmethod
     def get_name(cls) -> str:
-        return "ivntr-pdlm"
+        return "ivntr-nosem"
 
     def _get_current_predicates(self) -> Set[Predicate]:
         return self._initial_predicates | self._learned_predicates

@@ -8,7 +8,7 @@ do
     # Record start time
     start_time=$(date +%s)
     # low-level sampling is very hard for this environment
-    if python3 predicators/main.py --env satellites --approach ivntr-pdlm \
+    if python3 predicators/main.py --env satellites --approach ivntr-nosem\
         --seed $seed --offline_data_method "demo" \
         --disable_harmlessness_check True \
         --excluded_predicates "ViewClear,IsCalibrated,HasChemX,HasChemY,Sees" \
@@ -29,9 +29,9 @@ do
         --load_data \
         --load_neupi_from_json False \
         --timeout 5 \
-        --approach_dir "saved_approaches/demo/satellites/ivntr_pdlm_$seed" \
-        --neupi_save_path "saved_approaches/demo/satellites/ivntr_pdlm_$seed" \
-        --log_file logs/satellites/ivntr_ood_test_pdlm_$seed.log; then
+        --approach_dir "saved_approaches/demo/satellites/ivntr_nosem_$seed" \
+        --neupi_save_path "saved_approaches/demo/satellites/ivntr_nosem_$seed" \
+        --log_file logs/satellites/ivntr_ood_test_nosem_$seed.log; then
         echo "Seed $seed completed successfully."
     else
         echo "Seed $seed encountered an error."
@@ -54,7 +54,7 @@ do
     # Record start time
     start_time=$(date +%s)
     # low-level sampling is very hard for this environment
-    if python3 predicators/main.py --env satellites --approach ivntr-pdlm\
+    if python3 predicators/main.py --env satellites --approach ivntr-nosem\
         --seed $seed --offline_data_method "demo" \
         --disable_harmlessness_check True \
         --excluded_predicates "ViewClear,IsCalibrated,HasChemX,HasChemY,Sees" \
@@ -75,9 +75,9 @@ do
         --load_neupi_from_json False \
         --in_domain_test True \
         --timeout 5 \
-        --approach_dir "saved_approaches/demo/satellites/ivntr_pdlm_$seed" \
-        --neupi_load_pretrained "saved_approaches/demo/satellites/ivntr_pdlm_$seed" \
-        --log_file logs/satellites/ivntr_indomain_pdlm_$seed.log; then
+        --approach_dir "saved_approaches/demo/satellites/ivntr_nosem_$seed" \
+        --neupi_load_pretrained "saved_approaches/demo/satellites/ivntr_nosem_$seed" \
+        --log_file logs/satellites/ivntr_indomain_nosem_$seed.log; then
         echo "Seed $seed completed successfully."
     else
         echo "Seed $seed encountered an error."

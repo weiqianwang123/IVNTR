@@ -13,125 +13,6 @@ from collections import OrderedDict
 from predicators.structs import ParameterizedOption, Predicate, Type  # noqa: F401
 from predicators.llm.llm_for_effect_new import constraints_to_vector
 
-# Additional imports for Gemini and Qwen
-try:
-    import google.generativeai as genai
-    GEMINI_AVAILABLE = True
-except ImportError:
-    GEMINI_AVAILABLE = False
-
-try:
-    from openai import OpenAI as QwenClient  # Qwen uses OpenAI-compatible API
-    QWEN_AVAILABLE = True
-except ImportError:
-    QWEN_AVAILABLE = False
-
-# ─────────────────────────────── LLM Client Interface ────────────────────────────────
-class LLMClient:
-    """Unified interface for different LLM providers"""
-    
-    def __init__(self, provider: str, model: str, api_key: str, **kwargs):
-        self.provider = provider.lower()
-        self.model = model
-        self.api_key = api_key
-        self.timeout = kwargs.get("timeout", 30.0)
-        
-        if self.provider == "openai":
-            self._client = openai.OpenAI(api_key=api_key, timeout=self.timeout)
-        elif self.provider == "gemini":
-            if not GEMINI_AVAILABLE:
-                raise RuntimeError("google-generativeai not installed. Install with: pip install google-generativeai")
-            genai.configure(api_key=api_key)
-            self._client = genai.GenerativeModel(model)
-        elif self.provider == "qwen":
-            if not QWEN_AVAILABLE:
-                raise RuntimeError("OpenAI client required for Qwen. Install with: pip install openai")
-            # Alibaba Cloud Model Studio uses DashScope compatible API
-            base_url =  "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
-            print(f"Initializing Qwen client with base_url: {base_url}")
-            print(f"API key format: {api_key[:8]}...{api_key[-8:]}")
-            
-            self._client = QwenClient(
-                api_key=api_key, 
-                base_url=base_url, 
-                timeout=self.timeout
-            )
-            print("API",api_key)
-        else:
-            raise ValueError(f"Unsupported provider: {provider}. Supported: openai, gemini, qwen")
-    
-    def create_completion(self, messages: List[Dict], temperature: float, max_tokens: int) -> str:
-        """Create a chat completion across different providers"""
-        if self.provider == "openai":
-            response = self._client.chat.completions.create(
-                model=self.model,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                messages=messages
-            )
-            return response.choices[0].message.content
-            
-        elif self.provider == "gemini":
-            # Convert messages to Gemini format
-            if len(messages) == 1:
-                prompt = messages[0]["content"]
-            else:
-                # Combine system and user messages
-                system_msg = next((m["content"] for m in messages if m["role"] == "system"), "")
-                user_msg = next((m["content"] for m in messages if m["role"] == "user"), "")
-                prompt = f"{system_msg}\n\n{user_msg}" if system_msg else user_msg
-            
-            response = self._client.generate_content(
-                prompt,
-                generation_config=genai.types.GenerationConfig(
-                    temperature=temperature,
-                    max_output_tokens=max_tokens
-                )
-            )
-            return response.text
-            
-        elif self.provider == "qwen":
-            try:
-                response = self._client.chat.completions.create(
-                    model=self.model,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    messages=messages
-                )
-                return response.choices[0].message.content
-            except Exception as e:
-                print(f"Qwen API call failed: {e}")
-                print(f"Model: {self.model}, Base URL: {self._client.base_url}")
-                raise RuntimeError(f"Qwen API error: {e}. Check your API key and base URL configuration.")
-
-# ─────────────────────────────── Provider Configuration Helpers ────────────────────────────────
-def get_provider_config(provider: str) -> Dict:
-    """Get default configuration for different providers"""
-    if provider.lower() == "openai":
-        return {
-            "provider": "openai",
-            "model": "gpt-4o",
-            "temperature": 0.2,
-            "max_tokens": 16384,
-        }
-    elif provider.lower() == "gemini":
-        return {
-            "provider": "gemini", 
-            "model": "gemini-1.5-pro",
-            "temperature": 0.2,
-            "max_tokens": 8192,
-        }
-    elif provider.lower() == "qwen":
-        return {
-            "provider": "qwen",
-            "model": "qwen-plus",  # Model Studio models: qwen-plus, qwen-max, qwen-turbo
-            "temperature": 0.2,
-            "max_tokens": 8192,
-            "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
-        }
-    else:
-        raise ValueError(f"Unsupported provider: {provider}. Supported: openai, gemini, qwen")
-
 # ─────────────────────────────── helpers ────────────────────────────────
 _PDDL_HEADER = """\
 (define (domain learnt-domain)
@@ -145,15 +26,21 @@ def load_initial_predicates(json_path: str):
     with open(json_path, "r") as f:
         spec = json.load(f)
     preds, goal_info, precond_info = [], {}, {}
+    
+    # Create mapping from semantic predicate names to generic ones
+    pred_names = [p["name"] for p in spec["predicates"]]
+    predicate_mapping = {name: f"predicate{i+1}" for i, name in enumerate(sorted(pred_names))}
+    
     for p in spec["predicates"]:
         types = [Type(t, set()) for t in p["types"]]  
-        pred_obj = Predicate(p["name"], types,set())
+        generic_pred_name = predicate_mapping[p["name"]]
+        pred_obj = Predicate(generic_pred_name, types, set())
         preds.append(pred_obj)
         if p["role"] == "goal":
-            goal_info[p["name"]] = p["effect_map"]   # {action: "add"/"del"}
+            goal_info[generic_pred_name] = p["effect_map"]   # {action: "add"/"del"}
         else:
-            precond_info[p["name"]] = set(p["precond_of"])
-    return preds, goal_info, precond_info
+            precond_info[generic_pred_name] = set(p["precond_of"])
+    return preds, goal_info, precond_info, predicate_mapping
 
 
 def _pddl_name(x: str) -> str:
@@ -171,25 +58,32 @@ def build_pddl_skeleton(
     """Return a string with *empty* action stubs ready for the LLM to fill."""
     # 1) types ────────────────────────────────────────────────────────────
     all_types = {t.name for opt in options for t in opt.types}
-    type_line = " ".join(sorted(all_types))
+    # Create mapping from semantic type names to generic ones
+    type_names = sorted(all_types)
+    type_mapping = {name: f"type{i+1}" for i, name in enumerate(type_names)}
+    type_line = " ".join(type_mapping.values())
     
     # 2) predicate declarations (target + others)──────────────────────────
     preds = (other_preds or set())
     pred_lines = []
     for p in sorted(preds, key=lambda p: p.name):
-        # Example:   (holding ?o - object)
-        ty_sig = " ".join(f"?{i} - {_pddl_name(t.name)}"
+        # Example:   (holding ?o - type1)
+        ty_sig = " ".join(f"?{i} - {type_mapping.get(t.name, f'type{hash(t.name) % 10 + 1}')}"
                           for i, t in enumerate(p.types))
 
         pred_lines.append(f"    ({_pddl_name(p.name)} {ty_sig})")
 
     # 3) bare action stubs ────────────────────────────────────────────────
     action_blocks = []
-    for opt in options:
+    # Create mapping from semantic action names to generic ones
+    action_mapping = {opt.name: f"action{i+1}" for i, opt in enumerate(options)}
+    
+    for i, opt in enumerate(options):
         params = " ".join(
-            f"?{i} - {_pddl_name(t.name)}"
-            for i, t in enumerate(opt.types)
+            f"?{j} - {type_mapping.get(t.name, f'type{hash(t.name) % 10 + 1}')}"
+            for j, t in enumerate(opt.types)
         )
+        action_name = action_mapping[opt.name]
         # precondition / effect
         preconds = []
         effects  = []
@@ -205,7 +99,7 @@ def build_pddl_skeleton(
                 effects.append(atom if kind == "add" else f"(not {atom})")
 
         action_blocks.append(f"""\
-        (:action {_pddl_name(opt.name)}
+        (:action {action_name}
             :parameters ({params})
             :precondition (and {' '.join(preconds)})
             :effect       (and {' '.join(effects)})
@@ -274,46 +168,23 @@ class PDDLEffectVectorGenerator():
         # ---------- env + LLM cfg ----------
         load_dotenv(".env.local")
         self.cfg = {
-            "provider": "qwen",  # Default provider
-            "model": "qwen-plus",
+            "model": "gpt-4o",
             "temperature": 0.2,
             "max_tokens": 16384,
-            "retry_attempts": 20,
+            "retry_attempts":20,
             "timeout": 30.0,
             **(llm_cfg or {}),
         }
-        
-        # Get API key based on provider
-        provider = self.cfg["provider"].lower()
-        if provider == "openai":
-            api_key = self.cfg.get("api_key") or os.getenv("OPENAI_API_KEY")
-            if not api_key:
-                raise RuntimeError("OPENAI_API_KEY not set.")
-        elif provider == "gemini":
-            api_key = self.cfg.get("api_key") or os.getenv("GEMINI_API_KEY")
-            if not api_key:
-                raise RuntimeError("GEMINI_API_KEY not set.")
-        elif provider == "qwen":
-            api_key = self.cfg.get("api_key") or os.getenv("QWEN_API_KEY")
-            if not api_key:
-                raise RuntimeError("QWEN_API_KEY not set.")
-        else:
-            raise ValueError(f"Unsupported provider: {provider}")
-            
-        # Initialize unified client
-        self._client = LLMClient(
-            provider=provider,
-            model=self.cfg["model"],
-            api_key=api_key,
-            timeout=self.cfg["timeout"],
-            base_url=self.cfg.get("base_url")  # For Qwen custom endpoint
-        )
+        openai.api_key = self.cfg.get("api_key") or os.getenv("OPENAI_API_KEY")
+        if not openai.api_key:
+            raise RuntimeError("OPENAI_API_KEY not set.")
+        self._client = openai.OpenAI(api_key=openai.api_key, timeout=self.cfg["timeout"])
 
       
         # prompts
         self.system_prompt = self.COMPLETION_GUIDE+self._demo_prompt
         
-        init_preds, goal_info, precond_info = load_initial_predicates(pddl_config_path or "predicators/config/satellites/pddl.json")
+        init_preds, goal_info, precond_info, predicate_mapping = load_initial_predicates(pddl_config_path or "predicators/config/satellites/pddl.json")
 
         self._domain_skeleton = build_pddl_skeleton(
                 options=self._orig_options,
@@ -340,15 +211,16 @@ class PDDLEffectVectorGenerator():
   
     
     def _call_llm(self, prompt: str) -> str:
-        messages = [
-            {"role": "system", "content": self.system_prompt},
-            {"role": "user", "content": prompt},
-        ]
-        return self._client.create_completion(
-            messages=messages,
+        chat = self._client.chat.completions.create(
+            model=self.cfg["model"],
             temperature=self.cfg["temperature"],
-            max_tokens=self.cfg["max_tokens"]
+            max_tokens=self.cfg["max_tokens"],
+            messages=[
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": prompt},
+            ],
         )
+        return chat.choices[0].message.content
 
 
     # ------------ override the whole generation loop --------------------
@@ -373,10 +245,10 @@ class PDDLEffectVectorGenerator():
             prompt   = self._last_filled_pddl or self._domain_skeleton
         retries  = self.cfg.get("retry_attempts", 5)
 
-        tgt2sig = {
-            _pddl_name(tp.name): [_pddl_name(t.name) for t in tp.types]
-            for tp in self.target_preds
-        }
+        # Create type mapping for matching target predicate signatures with LLM output
+        all_types = {t.name for tp in self.target_preds for t in tp.types}
+        type_names = sorted(all_types)
+        type_mapping = {name: f"type{i+1}" for i, name in enumerate(type_names)}
 
         for attempt in range(1, retries + 1):
             try:
@@ -411,7 +283,9 @@ class PDDLEffectVectorGenerator():
             for r, pddl_name in enumerate(new_preds):
                 sig = pred2types.get(pddl_name, [])
                 for tp in self.target_preds:
-                    if sig == tgt2sig[_pddl_name(tp.name)]:
+                    # Create generic type signature for target predicate
+                    target_generic_sig = [type_mapping.get(t.name, f"type{hash(t.name) % 10 + 1}") for t in tp.types]
+                    if sig == target_generic_sig:
                         type_signature = pred2types.get(pddl_name, [])
                         typed_pddl_name = f"{pddl_name}({', '.join(type_signature)})" if type_signature else pddl_name
                         result[tp].append((typed_pddl_name, mat[r]))
@@ -475,7 +349,11 @@ class PDDLEffectVectorGenerator():
 
         # ---------- ③ build |new| × |actions| matrix ----------
         mat = torch.zeros((len(new_preds), len(self._orig_options)), dtype=torch.long)
-        act2idx = {_pddl_name(o.name): i for i, o in enumerate(self._orig_options)}
+        # Create mapping to handle both semantic and non-semantic action names
+        action_mapping = {opt.name: f"action{i+1}" for i, opt in enumerate(self._orig_options)}
+        act2idx = {action_mapping.get(o.name, f"action{i+1}"): i for i, o in enumerate(self._orig_options)}
+        # Also add mapping for PDDL-safe versions
+        act2idx.update({_pddl_name(action_mapping.get(o.name, f"action{i+1}")): i for i, o in enumerate(self._orig_options)})
         def _grab_effect(txt, start):			
             idx = txt.find('(', start)
             depth = 0
@@ -516,20 +394,23 @@ class PDDLEffectVectorGenerator():
         logging.info("Updated bad history text:\n%s", self._bad_history_text)
     def _format_bad_history_for_prompt(self, bad_history: Dict) -> str:
         lines = []
+        # Create action mapping for non-semantic names
+        action_mapping = {opt.name: f"action{i+1}" for i, opt in enumerate(self._orig_options)}
+        
         for pred, entries in bad_history.items():
             for item in entries:
                 name = item.get("name", "UNKNOWN")
                 row_tensor = item.get("row")
                 reason = item.get("reason", "")
 
-                # Reformat row_tensor (Add/Delete)
+                # Reformat row_tensor (Add/Delete) using generic action names
                 add_list = []
                 del_list = []
                 for i, val in enumerate(row_tensor.tolist()):
                     if val == 1:
-                        add_list.append(self._orig_options[i].name)
+                        add_list.append(action_mapping.get(self._orig_options[i].name, f"action{i+1}"))
                     elif val == 2:
-                        del_list.append(self._orig_options[i].name)
+                        del_list.append(action_mapping.get(self._orig_options[i].name, f"action{i+1}"))
 
                 add_str = ", ".join(add_list) if add_list else "None"
                 del_str = ", ".join(del_list) if del_list else "None"
@@ -585,12 +466,14 @@ def _vec_to_key(self, vec: Union[torch.Tensor, List[int]]) -> str:
         """Convert an *effect vector* back to the canonical history key."""
         if isinstance(vec, torch.Tensor):
             vec = vec.tolist()
+        # Create action mapping for non-semantic names
+        action_mapping = {opt.name: f"action{i+1}" for i, opt in enumerate(self._orig_options)}
         add_set, del_set = [], []
         for v, opt in zip(vec, self._orig_options):
             if v == 1:
-                add_set.append(opt.name)
+                add_set.append(action_mapping.get(opt.name, f"action{hash(opt.name) % 100 + 1}"))
             elif v == 2:
-                del_set.append(opt.name)
+                del_set.append(action_mapping.get(opt.name, f"action{hash(opt.name) % 100 + 1}"))
         return f"ADD:{sorted(add_set)}|DEL:{sorted(del_set)}"
 
 class LLMEffectVectorGenerator:
@@ -647,40 +530,17 @@ class LLMEffectVectorGenerator:
         # ---------- env + LLM cfg ----------
         load_dotenv(".env.local")
         self.cfg = {
-            "provider": "openai",  # Default provider
             "model": "gpt-4o",
             "temperature": 0.9,
             "max_tokens": 4096,
-            "retry_attempts": 10,
+            "retry_attempts":10,
             "timeout": 30.0,
             **(llm_cfg or {}),
         }
-        
-        # Get API key based on provider
-        provider = self.cfg["provider"].lower()
-        if provider == "openai":
-            api_key = self.cfg.get("api_key") or os.getenv("OPENAI_API_KEY")
-            if not api_key:
-                raise RuntimeError("OPENAI_API_KEY not set.")
-        elif provider == "gemini":
-            api_key = self.cfg.get("api_key") or os.getenv("GEMINI_API_KEY")
-            if not api_key:
-                raise RuntimeError("GEMINI_API_KEY not set.")
-        elif provider == "qwen":
-            api_key = self.cfg.get("api_key") or os.getenv("QWEN_API_KEY")
-            if not api_key:
-                raise RuntimeError("QWEN_API_KEY not set.")
-        else:
-            raise ValueError(f"Unsupported provider: {provider}")
-            
-        # Initialize unified client
-        self._client = LLMClient(
-            provider=provider,
-            model=self.cfg["model"],
-            api_key=api_key,
-            timeout=self.cfg["timeout"],
-            base_url=self.cfg.get("base_url")  # For Qwen custom endpoint
-        )
+        openai.api_key = self.cfg.get("api_key") or os.getenv("OPENAI_API_KEY")
+        if not openai.api_key:
+            raise RuntimeError("OPENAI_API_KEY not set.")
+        self._client = openai.OpenAI(api_key=openai.api_key, timeout=self.cfg["timeout"])
 
         # ——— filter & derive candidate sets ———
         self._filter_and_prepare()
@@ -707,9 +567,12 @@ class LLMEffectVectorGenerator:
         self._orig_idx = keep_idx
         self._allowed_local = keep_allowed  # parallel to self._options
 
-        # candidate action name sets for ADD / DEL
-        self._add_cand = {opt.name for opt, allowed in zip(self._options, self._allowed_local) if 1 in allowed}
-        self._del_cand = {opt.name for opt, allowed in zip(self._options, self._allowed_local) if 2 in allowed}
+        # Create mapping for non-semantic action names
+        self._action_mapping = {opt.name: f"action{i+1}" for i, opt in enumerate(self._orig_options)}
+        
+        # candidate action name sets for ADD / DEL (using generic names)
+        self._add_cand = {self._action_mapping.get(opt.name, f"action{i+1}") for i, (opt, allowed) in enumerate(zip(self._options, self._allowed_local)) if 1 in allowed}
+        self._del_cand = {self._action_mapping.get(opt.name, f"action{i+1}") for i, (opt, allowed) in enumerate(zip(self._options, self._allowed_local)) if 2 in allowed}
 
     # ─────────────────────────── prompt building ──────────────────────────
     def _build_system_prompt(self) -> str:
@@ -721,7 +584,7 @@ class LLMEffectVectorGenerator:
             "The name of the <TARGET> predicate may be unknown—just ignore its name,and using its type and domain to infer. "
         )
         lines.append(
-            "A predicate is an abstract statement about the world. For instance, in Blocks‑World, `OnTable(block)` will be DELETE after `Pick(block)`."
+            "A predicate is an abstract statement about the world. For instance, `predicate1(type1)` will be DELETE after `action1(type1)`."
         )
         # ----- output contract -----
         lines.append(
@@ -736,16 +599,24 @@ class LLMEffectVectorGenerator:
         # ----- domain description -----
         if self._domain_desc:
             lines.extend(["=== Domain Description ===", self._domain_desc, "---"])
+        # Create mappings for non-semantic names
+        all_types = {t.name for opt in self._options for t in opt.types}
+        type_names = sorted(all_types)
+        type_mapping = {name: f"type{i+1}" for i, name in enumerate(type_names)}
+        action_mapping = {opt.name: f"action{i+1}" for i, opt in enumerate(self._options)}
+        
         # ----- predicates -----
         lines.append("=== Predicates ===")
         for p in sorted({self.target_pred} | self._other_preds, key=lambda x: x.name):
             prefix = "<TARGET> " if p == self.target_pred else ""
-            lines.append(f"{prefix}Predicate: Unknown | Types: {[t.name for t in p.types]}")
+            generic_types = [type_mapping.get(t.name, f"type{hash(t.name) % 10 + 1}") for t in p.types]
+            lines.append(f"{prefix}Predicate: Unknown | Types: {generic_types}")
        
         # ----- detailed option list -----
         lines.append("=== Actions (index‑order) ===")
-        for opt in self._options:
-            lines.append(f"{opt.name}({[t.name for t in opt.types]})")
+        for i, opt in enumerate(self._options):
+            generic_types = [type_mapping.get(t.name, f"type{hash(t.name) % 10 + 1}") for t in opt.types]
+            lines.append(f"action{i+1}({generic_types})")
       
 
          # ----- actions -----
@@ -763,15 +634,16 @@ class LLMEffectVectorGenerator:
 
     # ──────────────────────────── helpers ────────────────────────────
     def _call_llm(self, prompt: str) -> str:
-        messages = [
-            {"role": "system", "content": self.system_prompt},
-            {"role": "user", "content": prompt},
-        ]
-        return self._client.create_completion(
-            messages=messages,
+        chat = self._client.chat.completions.create(
+            model=self.cfg["model"],
             temperature=self.cfg["temperature"],
-            max_tokens=self.cfg["max_tokens"]
+            max_tokens=self.cfg["max_tokens"],
+            messages=[
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": prompt},
+            ],
         )
+        return chat.choices[0].message.content
 
     def _parse(self, text: str) -> Optional[torch.Tensor]:
         """Parse LLM reply → full‑length torch.LongTensor."""
@@ -789,8 +661,11 @@ class LLMEffectVectorGenerator:
             return None
         self._seen.add(key)
 
-        # quick access map for the (filtered) options list
-        name_to_idx = {opt.name: i for i, opt in enumerate(self._options)}
+        # Create reverse mapping from generic names back to original names
+        generic_to_orig = {f"action{i+1}": opt.name for i, opt in enumerate(self._orig_options)}
+        
+        # quick access map for the (filtered) options list using generic names
+        name_to_idx = {self._action_mapping.get(opt.name, f"action{i+1}"): i for i, opt in enumerate(self._options)}
         local_vec = [0] * len(self._options)
         try:
             for act in add_set:
@@ -833,9 +708,9 @@ class LLMEffectVectorGenerator:
         add_list, del_list = [], []
         for v, opt in zip(vec, self._orig_options):
             if v == 1:
-                add_list.append(opt.name)
+                add_list.append(self._action_mapping.get(opt.name, f"action{hash(opt.name) % 100 + 1}"))
             elif v == 2:
-                del_list.append(opt.name)
+                del_list.append(self._action_mapping.get(opt.name, f"action{hash(opt.name) % 100 + 1}"))
         return f"ADD: {', '.join(add_list)}\nDEL: {', '.join(del_list)}"
 
     def _candidates_prompt(self, vecs: List[torch.Tensor]) -> str:
@@ -856,9 +731,9 @@ class LLMEffectVectorGenerator:
         add_set, del_set = [], []
         for v, opt in zip(vec, self._orig_options):
             if v == 1:
-                add_set.append(opt.name)
+                add_set.append(self._action_mapping.get(opt.name, f"action{hash(opt.name) % 100 + 1}"))
             elif v == 2:
-                del_set.append(opt.name)
+                del_set.append(self._action_mapping.get(opt.name, f"action{hash(opt.name) % 100 + 1}"))
         return f"ADD:{sorted(add_set)}|DEL:{sorted(del_set)}"
 
 
@@ -927,7 +802,10 @@ if __name__ == "__main__":
                 col_count = len(self._orig_options)
                 mat = []
 
-                act2idx = {_pddl_name(o.name): i for i, o in enumerate(self._orig_options)}
+                # Create mapping for non-semantic action names
+                action_mapping = {opt.name: f"action{i+1}" for i, opt in enumerate(self._orig_options)}
+                act2idx = {action_mapping.get(o.name, f"action{i+1}"): i for i, o in enumerate(self._orig_options)}
+                act2idx.update({_pddl_name(action_mapping.get(o.name, f"action{i+1}")): i for i, o in enumerate(self._orig_options)})
 
                 def _grab_effect(txt, start):			
                     idx = txt.find('(', start)
@@ -1039,21 +917,21 @@ if __name__ == "__main__":
                 return mat_tensor, mat_rows, pred2types
 
 
-        # === Sample domain with grounded effects ===
+        # === Sample domain with grounded effects (using generic names) ===
         pddl_text = """
         (:predicates
-            (clear ?b - block)
-            (on ?x - block ?y - block)
+            (predicate1 ?b - type1)
+            (predicate2 ?x - type1 ?y - type1)
         )
 
-        (:action stack
-            :parameters (?x - block ?y - block)
-            :effect (and (clear b1) (not (clear b2)) (on b1 b2))
+        (:action action1
+            :parameters (?x - type1 ?y - type1)
+            :effect (and (predicate1 b1) (not (predicate1 b2)) (predicate2 b1 b2))
         )
 
-        (:action unstack
-            :parameters (?x - block ?y - block)
-            :effect (and (not (on b1 b2)) (clear b2))
+        (:action action2
+            :parameters (?x - type1 ?y - type1)
+            :effect (and (not (predicate2 b1 b2)) (predicate1 b2))
         )
         """
 
@@ -1070,20 +948,20 @@ if __name__ == "__main__":
 
         # === Assertions ===
         assert mat.shape[1] == 2  # two actions
-        assert "clear__b1" in pred_order
-        assert "clear__b2" in pred_order
-        assert "on__b1__b2" in pred_order
+        assert "predicate1__b1" in pred_order
+        assert "predicate1__b2" in pred_order
+        assert "predicate2__b1__b2" in pred_order
 
         # Convert matrix to readable form for checking
         mat_np = mat.numpy()
         row = {name: i for i, name in enumerate(pred_order)}
 
-        assert mat_np[row["clear__b1"]][0] == 1  # added in stack
-        assert mat_np[row["clear__b2"]][0] == 2  # deleted in stack
-        assert mat_np[row["on__b1__b2"]][0] == 1  # added in stack
+        assert mat_np[row["predicate1__b1"]][0] == 1  # added in action1
+        assert mat_np[row["predicate1__b2"]][0] == 2  # deleted in action1
+        assert mat_np[row["predicate2__b1__b2"]][0] == 1  # added in action1
 
-        assert mat_np[row["on__b1__b2"]][1] == 2  # deleted in unstack
-        assert mat_np[row["clear__b2"]][1] == 1  # added in unstack
+        assert mat_np[row["predicate2__b1__b2"]][1] == 2  # deleted in action2
+        assert mat_np[row["predicate1__b2"]][1] == 1  # added in action2
 
         print("\n✅ Test passed.")
 

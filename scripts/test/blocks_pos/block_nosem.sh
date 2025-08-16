@@ -2,36 +2,38 @@ export FD_EXEC_PATH=ext/downward
 export PYTHONHASHSEED=0
 export CUBLAS_WORKSPACE_CONFIG=:4096:8
 
-for seed in 0 
+for seed in 0 1 2 3 4
 do
-    echo "Running Seed $seed --------------------------------------"
+    echo "Running Seed 0 --------------------------------------"
     # Record start time
     start_time=$(date +%s)
     # low-level sampling is very hard for this environment
-    if python3 predicators/main.py --env satellites --approach ivntr-pdlm \
+    if python3 predicators/main.py --env blocks_onclear --approach ivntr-nosem \
         --seed $seed --offline_data_method "demo" \
         --disable_harmlessness_check True \
-        --excluded_predicates "ViewClear,IsCalibrated,HasChemX,HasChemY,Sees" \
-        --neupi_pred_config "predicators/config/satellites/pred.yaml" \
+        --excluded_predicates "On,OnTable,GripperOpen,Holding,Clear" \
+        --neupi_pred_config "predicators/config/blocks_onclear/pred.yaml" \
         --neupi_gt_ae_matrix False \
-        --sesame_task_planner "fdsat" \
         --exclude_domain_feat "none" \
-        --neupi_do_normalization False \
+        --domain_sampler_data_filter "none" \
+        --sesame_task_planner "fdsat" \
         --num_train_tasks 500 \
-        --domain_aaai_thresh 300000 \
-        --neupi_entropy_w 0.5 \
-        --neupi_loss_w 0.5 \
-        --neupi_equ_dataset 1.0 \
-        --neupi_pred_search_dataset 1.0 \
-        --bilevel_plan_without_sim False \
-        --sesame_max_samples_per_step 30 \
         --load_approach \
         --load_data \
-        --load_neupi_from_json False \
+        --load_neupi_from_json True \
         --timeout 5 \
-        --approach_dir "saved_approaches/demo/satellites/ivntr_pdlm_$seed" \
-        --neupi_save_path "saved_approaches/demo/satellites/ivntr_pdlm_$seed" \
-        --log_file logs/satellites/ivntr_ood_test_pdlm_$seed.log; then
+        --neupi_do_normalization True \
+        --neupi_entropy_w 0.0 \
+        --neupi_loss_w 1.0 \
+        --neupi_equ_dataset 0.05 \
+        --neupi_pred_search_dataset 1.0 \
+        --bilevel_plan_without_sim False \
+        --load_neupi_from_json False \
+        --execution_monitor expected_atoms \
+        --domain_aaai_thresh 6000000 \
+        --approach_dir "saved_approaches/final/blocks_pos/ivntr_nosem_$seed" \
+        --neupi_load_pretrained "saved_approaches/final/blocks_pos/ivntr_nosem_$seed" \
+        --log_file logs/blocks_pos/ivntr_ood_nosem_test_$seed.log; then
         echo "Seed $seed completed successfully."
     else
         echo "Seed $seed encountered an error."
@@ -54,19 +56,20 @@ do
     # Record start time
     start_time=$(date +%s)
     # low-level sampling is very hard for this environment
-    if python3 predicators/main.py --env satellites --approach ivntr-pdlm\
+    if python3 predicators/main.py --env blocks_onclear --approach ivntr-pdlm \
         --seed $seed --offline_data_method "demo" \
         --disable_harmlessness_check True \
-        --excluded_predicates "ViewClear,IsCalibrated,HasChemX,HasChemY,Sees" \
-        --neupi_pred_config "predicators/config/satellites/pred.yaml" \
+        --excluded_predicates "On,OnTable,GripperOpen,Holding,Clear" \
+        --neupi_pred_config "predicators/config/blocks_onclear/pred.yaml" \
         --neupi_gt_ae_matrix False \
         --sesame_task_planner "fdsat" \
-        --exclude_domain_feat "none" \
-        --neupi_do_normalization False \
         --num_train_tasks 500 \
+        --load_data \
+        --exclude_domain_feat "none" \
+        --domain_sampler_data_filter "none" \
+        --neupi_do_normalization True \
         --neupi_entropy_w 0.5 \
         --neupi_loss_w 0.5 \
-        --load_data \
         --neupi_equ_dataset 1.0 \
         --neupi_pred_search_dataset 1.0 \
         --bilevel_plan_without_sim False \
@@ -75,9 +78,8 @@ do
         --load_neupi_from_json False \
         --in_domain_test True \
         --timeout 5 \
-        --approach_dir "saved_approaches/demo/satellites/ivntr_pdlm_$seed" \
-        --neupi_load_pretrained "saved_approaches/demo/satellites/ivntr_pdlm_$seed" \
-        --log_file logs/satellites/ivntr_indomain_pdlm_$seed.log; then
+        --approach_dir "saved_approaches/final/blocks_pos/ivntr_nosem_$seed" \
+        --log_file logs/blocks_pos/ivntr_indomain_nosem_test_$seed.log; then
         echo "Seed $seed completed successfully."
     else
         echo "Seed $seed encountered an error."
