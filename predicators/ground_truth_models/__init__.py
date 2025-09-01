@@ -181,6 +181,13 @@ def get_gt_options(env_name: str) -> Set[ParameterizedOption]:
         predicates = {p.name: p for p in env.predicates}
         options = ToolsPCDGroundTruthOptionFactory().get_options(
             env_name, types, predicates, env.action_space)
+    elif env_name == "clean-table-real":
+        from predicators.ground_truth_models.clean_table_real.options import \
+            CleanTableRealGroundTruthOptionFactory
+        types = {t.name: t for t in env.types}
+        predicates = {p.name: p for p in env.predicates}
+        options = CleanTableRealGroundTruthOptionFactory().get_options(
+            env_name, types, predicates, env.action_space)
     else:
         raise NotImplementedError("Ground-truth options not implemented for "
                                   f"env: {env_name}")
@@ -217,6 +224,14 @@ def get_gt_nsrts(env_name: str, predicates_to_keep: Set[Predicate],
             predicates = {p.name: p for p in env.predicates}
             options = {o.name: o for o in env_options}
             nsrts = ToolsPCDGroundTruthNSRTFactory().get_nsrts(
+                env_name, types, predicates, options)
+        elif env_name == "clean-table-real":
+            from predicators.ground_truth_models.clean_table_real.nsrts import \
+                CleanTableRealGroundTruthNSRTFactory
+            types = {t.name: t for t in env.types}
+            predicates = {p.name: p for p in env.predicates}
+            options = {o.name: o for o in env_options}
+            nsrts = CleanTableRealGroundTruthNSRTFactory().get_nsrts(
                 env_name, types, predicates, options)
         else:
             raise NotImplementedError("Ground-truth NSRTs not implemented for "

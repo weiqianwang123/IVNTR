@@ -1,0 +1,216 @@
+final_op: [0, 0, 0, 0, 0, 0, 0, 0, 0, 1]  # AchieveGoal is the final operation
+neupi_non_effect_predicates: []
+
+config:
+  - name: "other"
+    num_vectors_to_generate_list: [2, 2, 1, 2]
+    domain_desc: ""
+  
+  # Neural unary predicate for toy (toy holding states)
+  - name: "neural_u_toy"
+    types: ["toy"]
+    num_vectors_to_generate: 1
+    ent_idx: [0]
+    architecture: 
+      type: "MLP"
+      layer_size: 64
+      initializer: "xavier"
+    optimizer:
+      type: "AdamW"
+      kwargs:
+        lr: 0.001
+    lr_scheduler:
+      type: "StepLR"
+      kwargs:
+        step_size: 50
+        gamma: 0.2
+    batch_vect_num: 8
+    batch_size: 256
+    epochs: 80
+    gumbel_temp: 0.7
+    val_freq: 10
+    num_iter: 4
+    matrix_vec_try: 80
+    search_tree_max_level: 1
+    guidance_thresh: 0.05
+    loss_thresh: 0.008
+    skip_train: False
+  
+
+  - name: "neural_u_table"
+    types: ["table"]
+    num_vectors_to_generate: 1
+    ent_idx: [0]
+    architecture:
+      type: "MLP"
+      layer_size: 64
+      initializer: "xavier"
+    optimizer:
+      type: "AdamW"
+      kwargs:
+        lr: 0.001
+    lr_scheduler:
+      type: "StepLR"
+      kwargs:
+        step_size: 50
+        gamma: 0.2
+    batch_vect_num: 8
+    batch_size: 256
+    epochs: 80
+    gumbel_temp: 0.7
+    val_freq: 10
+    num_iter: 4
+    matrix_vec_try: 80
+    search_tree_max_level: 1
+    guidance_thresh: 0.05
+    loss_thresh: 0.008
+    skip_train: False
+  
+  # Neural unary predicate for wiper (wiper holding states)
+  - name: "neural_u_wiper"
+    types: ["wiper"]
+    num_vectors_to_generate: 1
+    ent_idx: [0]
+    architecture:
+      type: "MLP"
+      layer_size: 64
+      initializer: "xavier"
+    optimizer:
+      type: "AdamW"
+      kwargs:
+        lr: 0.001
+    lr_scheduler:
+      type: "StepLR"
+      kwargs:
+        step_size: 50
+        gamma: 0.2
+    batch_vect_num: 8
+    batch_size: 256
+    epochs: 80
+    gumbel_temp: 0.7
+    val_freq: 10
+    num_iter: 4
+    matrix_vec_try: 80
+    search_tree_max_level: 1
+    guidance_thresh: 0.05
+    loss_thresh: 0.008
+    skip_train: False
+
+  # Neural binary predicate for robot-toy interaction
+  - name: "neural_b_robot_toy"
+    types: ["robot", "toy"]
+    ent_idx: [0, 0]
+    num_vectors_to_generate: 1
+    architecture:
+      type: "MLP"
+      layer_size: 128
+      initializer: "xavier"
+    optimizer:
+      type: "AdamW"
+      kwargs:
+        lr: 0.0008
+    lr_scheduler:
+      type: "StepLR"
+      kwargs:
+        step_size: 60
+        gamma: 0.15
+    batch_vect_num: 6
+    batch_size: 256
+    epochs: 120
+    gumbel_temp: 0.65
+    val_freq: 10
+    num_iter: 8
+    matrix_vec_try: 100
+    search_tree_max_level: 1
+    guidance_thresh: 0.08
+    loss_thresh: 0.006
+    skip_train: False
+
+  # Neural binary predicate for robot-wiper interaction
+  - name: "neural_b_robot_wiper"
+    types: ["robot", "wiper"]
+    ent_idx: [0, 0]
+    num_vectors_to_generate: 1
+    architecture:
+      type: "MLP"
+      layer_size: 128
+      initializer: "xavier"
+    optimizer:
+      type: "AdamW"
+      kwargs:
+        lr: 0.0008
+    lr_scheduler:
+      type: "StepLR"
+      kwargs:
+        step_size: 60
+        gamma: 0.15
+    batch_vect_num: 6
+    batch_size: 256
+    epochs: 120
+    gumbel_temp: 0.65
+    val_freq: 10
+    num_iter: 8
+    matrix_vec_try: 100
+    search_tree_max_level: 1
+    guidance_thresh: 0.08
+    loss_thresh: 0.006
+    skip_train: False
+  
+
+  - name: "neural_b_table_toy"
+    types: ["table", "toy"]
+    ent_idx: [0, 0]
+    num_vectors_to_generate: 1
+    architecture:
+      type: "MLP"
+      layer_size: 128
+      initializer: "xavier"
+    optimizer:
+      type: "AdamW"
+      kwargs:
+        lr: 0.0008
+    lr_scheduler:
+      type: "StepLR"
+      kwargs:
+        step_size: 60
+        gamma: 0.15
+    batch_vect_num: 6
+    batch_size: 256
+    epochs: 120
+    gumbel_temp: 0.65
+    val_freq: 10
+    num_iter: 8
+    matrix_vec_try: 100
+    search_tree_max_level: 1
+    guidance_thresh: 0.08
+    loss_thresh: 0.006
+    skip_train: False
+
+  - name: "neural_b_table_wiper"
+    types: ["table", "wiper"]
+    ent_idx: [0, 0]
+    num_vectors_to_generate: 1
+    architecture:
+      type: "MLP"
+      layer_size: 128
+      initializer: "xavier"
+    optimizer:
+      type: "AdamW"
+      kwargs:
+        lr: 0.0008
+    lr_scheduler:
+      type: "StepLR"
+      kwargs:
+        step_size: 60
+        gamma: 0.15
+    batch_vect_num: 6
+    batch_size: 256
+    epochs: 120
+    gumbel_temp: 0.65
+    val_freq: 10
+    num_iter: 8
+    matrix_vec_try: 100
+    search_tree_max_level: 1
+    guidance_thresh: 0.08
+    loss_thresh: 0.006
+    skip_train: False

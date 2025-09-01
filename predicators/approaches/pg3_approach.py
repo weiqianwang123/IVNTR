@@ -107,8 +107,12 @@ class PG3Approach(NSRTLearningApproach):
         predicates = self._get_current_predicates()
         types = self._types
         domain_name = CFG.env
+        # Get derived predicates from environment
+        from predicators.envs import get_or_create_env
+        env = get_or_create_env(CFG.env)
+        derived_predicates = env.derived_predicates
         domain_str = utils.create_pddl_domain(nsrts, predicates, types,
-                                              domain_name)
+                                              domain_name, derived_predicates)
 
         # Create the problem strs.
         problem_strs = []

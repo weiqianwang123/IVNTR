@@ -90,6 +90,15 @@ class BaseEnv(abc.ABC):
         return self.goal_predicates
 
     @property
+    def derived_predicates(self) -> List[str]:
+        """Get PDDL derived predicate definitions for this environment.
+        
+        Returns a list of PDDL (:derived ...) strings.
+        Override in subclasses to add derived predicates.
+        """
+        return []
+
+    @property
     @abc.abstractmethod
     def types(self) -> Set[Type]:
         """Get the set of types that are given with this environment."""

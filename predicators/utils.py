@@ -3235,7 +3235,8 @@ def _atoms_to_pyperplan_facts(
 
 def create_pddl_domain(operators: Collection[NSRTOrSTRIPSOperator],
                        predicates: Collection[Predicate],
-                       types: Collection[Type], domain_name: str) -> str:
+                       types: Collection[Type], domain_name: str,
+                       derived_predicates: Optional[Collection[str]] = None) -> str:
     """Create a PDDL domain str from STRIPSOperators or NSRTs."""
     # Sort everything to ensure determinism.
     preds_lst = sorted(predicates)
@@ -3270,12 +3271,20 @@ def create_pddl_domain(operators: Collection[NSRTOrSTRIPSOperator],
     ops_lst = sorted(operators)
     preds_str = "\n    ".join(pred.pddl_str() for pred in preds_lst)
     ops_strs = "\n\n  ".join(op.pddl_str() for op in ops_lst)
+    
+    # Add derived predicates support
+    requirements = ":typing"
+    derived_strs = ""
+    if derived_predicates:
+        requirements += " :adl :derived-predicates"
+        derived_strs = "\n\n  " + "\n\n  ".join(derived_predicates)
+    
     return f"""(define (domain {domain_name})
-  (:requirements :typing)
+  (:requirements {requirements})
   (:types {types_str})
 
   (:predicates\n    {preds_str}
-  )
+  ){derived_strs}
 
   {ops_strs}
 )"""

@@ -22,6 +22,7 @@ from typing import Any, Collection, Dict, FrozenSet, Iterator, List, \
 import numpy as np
 
 from predicators import utils
+from predicators.envs import get_or_create_env
 from predicators.envs.view_plan import ViewPlanHardEnv 
 from predicators.envs.blocks_engraving import BlocksEngravePcdEnv
 from predicators.envs.pick_place import PickPlaceEnv
@@ -877,17 +878,23 @@ def run_low_level_search_reward(
         nsrt = skeleton_op[cur_idx]
         # Ground the NSRT's ParameterizedOption into an _Option.
         # This invokes the NSRT's sampler.
+        logging.info(f"DEBUG: Step {cur_idx}: Trying {nsrt.name} with objects {[obj.name for obj in nsrt.objects]}")
         option = nsrt.sample_option(state, task.goal, rng_sampler)
         plan[cur_idx] = option
         # Increment num_samples metric by 1
         metrics["num_samples"] += 1
         # Increment cur_idx. It will be decremented later on if we get stuck.
         cur_idx += 1
-        if option.initiable(state):
+        initiable = option.initiable(state)
+        # logging.info(f"DEBUG: Step {cur_idx-1}: Option initiable: {initiable}")
+        if initiable:
+            logging.info(f"DEBUG: Step {cur_idx-1}: Option {option} is initiable")
             try:
                 next_state, num_actions = \
                     option_model.get_next_state_and_num_actions(state, option)
+                # logging.info(f"DEBUG: Step {cur_idx-1}: Executed successfully, num_actions={num_actions}")
             except EnvironmentFailure as e:
+                # logging.info(f"DEBUG: Step {cur_idx-1}: FAILED with EnvironmentFailure: {e}")
                 can_continue_on = False
                 # Remember only the most recent failure.
                 discovered_failures[cur_idx - 1] = _DiscoveredFailure(e, nsrt)
@@ -908,12 +915,15 @@ def run_low_level_search_reward(
                             static_obj_changed = True
                             break
                 if static_obj_changed:
+                    # logging.info(f"DEBUG: Step {cur_idx-1}: FAILED - static objects changed")
                     can_continue_on = False
                 # Check if we have exceeded the horizon.
                 elif np.sum(num_actions_per_option[:cur_idx]) > max_horizon:
+                    # logging.info(f"DEBUG: Step {cur_idx-1}: FAILED - exceeded max horizon {max_horizon}")
                     can_continue_on = False
                 # Check if the option was effectively a noop.
                 elif num_actions == 0:
+                    # logging.info(f"DEBUG: Step {cur_idx-1}: FAILED - option was noop (0 actions)")
                     can_continue_on = False
                 elif CFG.sesame_check_expected_atoms:
                     # Check atoms against expected atoms_sequence constraint.
@@ -949,6 +959,7 @@ def run_low_level_search_reward(
                         if task.goal_holds(traj[cur_idx]):
                             plan_found = True
                         else:
+                            # logging.info(f"DEBUG: Step {cur_idx-1}: FAILED - goal not satisfied at final step")
                             can_continue_on = False
         else:
             # The option is not initiable.
@@ -1086,18 +1097,23 @@ def run_low_level_search(
         nsrt = skeleton[cur_idx]
         # Ground the NSRT's ParameterizedOption into an _Option.
         # This invokes the NSRT's sampler.
-        # logging.info(f"{cur_idx}-th NSRT: {nsrt.name}, {num_tries[cur_idx]} times")
+        # logging.info(f"DEBUG: Step {cur_idx}: Trying {nsrt.name}, attempt {num_tries[cur_idx]}/{max_tries[cur_idx]}")
         option = nsrt.sample_option(state, task.goal, rng_sampler)
+        # logging.info(f"DEBUG: Step {cur_idx}: Sampled option: {option}")
         plan[cur_idx] = option
         # Increment num_samples metric by 1
         metrics["num_samples"] += 1
         # Increment cur_idx. It will be decremented later on if we get stuck.
         cur_idx += 1
-        if option.initiable(state):
+        initiable = option.initiable(state)
+        # logging.info(f"DEBUG: Step {cur_idx-1}: Option initiable: {initiable}")
+        if initiable:
             try:
                 next_state, num_actions = \
                     option_model.get_next_state_and_num_actions(state, option)
+                # logging.info(f"DEBUG: Step {cur_idx-1}: Executed successfully, num_actions={num_actions}")
             except EnvironmentFailure as e:
+                # logging.info(f"DEBUG: Step {cur_idx-1}: FAILED with EnvironmentFailure: {e}")
                 can_continue_on = False
                 # Remember only the most recent failure.
                 discovered_failures[cur_idx - 1] = _DiscoveredFailure(e, nsrt)
@@ -1122,12 +1138,15 @@ def run_low_level_search(
                             static_obj_changed = True
                             break
                 if static_obj_changed:
+                    # logging.info(f"DEBUG: Step {cur_idx-1}: FAILED - static objects changed")
                     can_continue_on = False
                 # Check if we have exceeded the horizon.
                 elif np.sum(num_actions_per_option[:cur_idx]) > max_horizon:
+                    # logging.info(f"DEBUG: Step {cur_idx-1}: FAILED - exceeded max horizon {max_horizon}")
                     can_continue_on = False
                 # Check if the option was effectively a noop.
                 elif num_actions == 0:
+                    # logging.info(f"DEBUG: Step {cur_idx-1}: FAILED - option was noop (0 actions)")
                     can_continue_on = False
                 elif CFG.sesame_check_expected_atoms:
                     # Check atoms against expected atoms_sequence constraint.
@@ -1140,14 +1159,22 @@ def run_low_level_search(
                         for atom in atoms_sequence[cur_idx]
                         if atom.predicate.name != _NOT_CAUSES_FAILURE
                     }
+                    # logging.info(f"DEBUG: Step {cur_idx-1}: Checking expected atoms: {expected_atoms}")
                     # This "if all" statement is equivalent to, but faster
                     # than, checking whether expected_atoms is a subset of
                     # utils.abstract(traj[cur_idx], predicates).
-                    if all(a.holds(traj[cur_idx]) for a in expected_atoms):
+                    atoms_satisfied = all(a.holds(traj[cur_idx]) for a in expected_atoms)
+                    # Debug individual atoms
+                    # for atom in expected_atoms:
+                    #     holds = atom.holds(traj[cur_idx])
+                    #     logging.info(f"DEBUG: Step {cur_idx-1}: Atom {atom} holds: {holds}")
+                    # logging.info(f"DEBUG: Step {cur_idx-1}: Expected atoms satisfied: {atoms_satisfied}")
+                    if atoms_satisfied:
                         can_continue_on = True
                         if cur_idx == len(skeleton):
                             plan_found = True
                     else:
+                        # logging.info(f"DEBUG: Step {cur_idx-1}: FAILED - expected atoms not satisfied")
                         can_continue_on = False
                 else:
                     # If we're not checking expected_atoms, we need to
@@ -1157,9 +1184,11 @@ def run_low_level_search(
                         if task.goal_holds(traj[cur_idx]):
                             plan_found = True
                         else:
+                            # logging.info(f"DEBUG: Step {cur_idx-1}: FAILED - goal not satisfied at final step")
                             can_continue_on = False
         else:
             # The option is not initiable.
+            # logging.info(f"DEBUG: Step {cur_idx-1}: FAILED - option {option} is not initiable in current state")
             can_continue_on = False
         if refinement_time is not None:
             try_end_time = time.perf_counter()
@@ -1167,6 +1196,7 @@ def run_low_level_search(
         if plan_found:
             return plan, True  # success!
         if not can_continue_on:  # we got stuck, time to resample / backtrack!
+            # logging.info(f"DEBUG: Backtracking from step {cur_idx-1}, try {num_tries[cur_idx-1]}/{max_tries[cur_idx-1]}")
             # Update the longest_failed_refinement found so far.
             if cur_idx > len(longest_failed_refinement):
                 longest_failed_refinement = list(plan[:cur_idx])
@@ -1281,18 +1311,23 @@ def analyse_low_level_search(
         nsrt = skeleton[cur_idx]
         # Ground the NSRT's ParameterizedOption into an _Option.
         # This invokes the NSRT's sampler.
-        # logging.info(f"{cur_idx}-th NSRT: {nsrt.name}, {num_tries[cur_idx]} times")
+        # logging.info(f"DEBUG: Step {cur_idx}: Trying {nsrt.name}, attempt {num_tries[cur_idx]}/{max_tries[cur_idx]}")
         option = nsrt.sample_option(state, task.goal, rng_sampler)
+        # logging.info(f"DEBUG: Step {cur_idx}: Sampled option: {option}")
         plan[cur_idx] = option
         # Increment num_samples metric by 1
         metrics["num_samples"] += 1
         # Increment cur_idx. It will be decremented later on if we get stuck.
         cur_idx += 1
-        if option.initiable(state):
+        initiable = option.initiable(state)
+        # logging.info(f"DEBUG: Step {cur_idx-1}: Option initiable: {initiable}")
+        if initiable:
             try:
                 next_state, num_actions = \
                     option_model.get_next_state_and_num_actions(state, option)
+                # logging.info(f"DEBUG: Step {cur_idx-1}: Executed successfully, num_actions={num_actions}")
             except EnvironmentFailure as e:
+                # logging.info(f"DEBUG: Step {cur_idx-1}: FAILED with EnvironmentFailure: {e}")
                 can_continue_on = False
                 # Remember only the most recent failure.
                 discovered_failures[cur_idx - 1] = _DiscoveredFailure(e, nsrt)
@@ -1317,12 +1352,15 @@ def analyse_low_level_search(
                             static_obj_changed = True
                             break
                 if static_obj_changed:
+                    # logging.info(f"DEBUG: Step {cur_idx-1}: FAILED - static objects changed")
                     can_continue_on = False
                 # Check if we have exceeded the horizon.
                 elif np.sum(num_actions_per_option[:cur_idx]) > max_horizon:
+                    # logging.info(f"DEBUG: Step {cur_idx-1}: FAILED - exceeded max horizon {max_horizon}")
                     can_continue_on = False
                 # Check if the option was effectively a noop.
                 elif num_actions == 0:
+                    # logging.info(f"DEBUG: Step {cur_idx-1}: FAILED - option was noop (0 actions)")
                     can_continue_on = False
                 elif CFG.sesame_check_expected_atoms:
                     # Check atoms against expected atoms_sequence constraint.
@@ -1358,6 +1396,7 @@ def analyse_low_level_search(
                         if task.goal_holds(traj[cur_idx]):
                             plan_found = True
                         else:
+                            # logging.info(f"DEBUG: Step {cur_idx-1}: FAILED - goal not satisfied at final step")
                             can_continue_on = False
         else:
             # The option is not initiable.
@@ -1703,8 +1742,11 @@ def generate_sas_file_for_fd(
         init_atoms: Set[GroundAtom]) -> str:  # pragma: no cover
     """Generates a SAS file for a particular PDDL planning problem so that FD
     can be used for search."""
+    # Get derived predicates from environment
+    env = get_or_create_env(CFG.env)
+    derived_predicates = env.derived_predicates
     # Create the domain and problem strings, then write them to tempfiles.
-    dom_str = utils.create_pddl_domain(nsrts, predicates, types, "mydomain")
+    dom_str = utils.create_pddl_domain(nsrts, predicates, types, "mydomain", derived_predicates)
     prob_str = utils.create_pddl_problem(objects, init_atoms, task.goal,
                                          "mydomain", "myproblem")
     dom_file = tempfile.NamedTemporaryFile(delete=False).name
@@ -1876,6 +1918,10 @@ def _sesame_plan_with_fast_downward(
         skeleton, atoms_sequence, metrics = fd_plan_from_sas_file(
             sas_file, timeout_cmd, timeout, exec_str, alias_flag, start_time,
             objects, init_atoms, nsrts, float(max_horizon))
+        # DEBUG: Print the skeleton that FD produced
+        # logging.info(f"DEBUG: FD produced skeleton with {len(skeleton)} steps:")
+        # for i, nsrt in enumerate(skeleton):
+        #     logging.info(f"  {i+1}. {nsrt.name}({', '.join(str(obj) for obj in nsrt.objects)})")
         # Run low-level search on this skeleton.
         low_level_timeout = timeout - (time.perf_counter() - start_time)
         try:
@@ -1889,6 +1935,7 @@ def _sesame_plan_with_fast_downward(
             if not suc:
                 if time.perf_counter() - start_time > timeout:
                     raise PlanningTimeout("Planning timed out in refinement!")
+                # logging.info(f"DEBUG: Skeleton refinement failed at low-level search")
                 raise PlanningFailure("Skeleton produced by FD not refinable!")
             metrics["plan_length"] = len(plan)
             metrics["refinement_time"] = (time.perf_counter() -
@@ -1958,6 +2005,7 @@ def analyse_with_fast_downward(
             if not suc:
                 if time.perf_counter() - start_time > timeout:
                     raise PlanningTimeout("Planning timed out in refinement!")
+                # logging.info(f"DEBUG: Skeleton refinement failed in analyse_low_level_search")
                 raise PlanningFailure("Skeleton produced by FD not refinable!")
             metrics["plan_length"] = len(plan)
             metrics["refinement_time"] = (time.perf_counter() -

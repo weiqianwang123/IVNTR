@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "predicates": [
+    {
+      "name": "goalAchieved",
+      "arity": 0,
+      "types": [],
+      "role": "goal",
+      "effect_map": {
+        "AchieveGoal": "add"
+      }
+    }
+  ]
+}

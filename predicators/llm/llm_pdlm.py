@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 import openai
 import torch
 import random
+import requests
 from collections import OrderedDict
 from predicators.structs import ParameterizedOption, Predicate, Type  # noqa: F401
 from predicators.llm.llm_for_effect_new import constraints_to_vector
@@ -25,6 +26,12 @@ try:
     QWEN_AVAILABLE = True
 except ImportError:
     QWEN_AVAILABLE = False
+
+try:
+    import requests
+    REQUESTS_AVAILABLE = True
+except ImportError:
+    REQUESTS_AVAILABLE = False
 
 # ─────────────────────────────── LLM Client Interface ────────────────────────────────
 class LLMClient:
@@ -57,8 +64,14 @@ class LLMClient:
                 timeout=self.timeout
             )
             print("API",api_key)
+        elif self.provider == "gpt_oss_local":
+            if not REQUESTS_AVAILABLE:
+                raise RuntimeError("requests library required for local GPT OSS. Install with: pip install requests")
+            self.base_url = kwargs.get("base_url", "http://localhost:8000")
+            self._client = None  # Use requests directly
+            print(f"Initializing local GPT OSS client with base_url: {self.base_url}")
         else:
-            raise ValueError(f"Unsupported provider: {provider}. Supported: openai, gemini, qwen")
+            raise ValueError(f"Unsupported provider: {provider}. Supported: openai, gemini, qwen, gpt_oss_local")
     
     def create_completion(self, messages: List[Dict], temperature: float, max_tokens: int) -> str:
         """Create a chat completion across different providers"""
@@ -103,6 +116,119 @@ class LLMClient:
                 print(f"Qwen API call failed: {e}")
                 print(f"Model: {self.model}, Base URL: {self._client.base_url}")
                 raise RuntimeError(f"Qwen API error: {e}. Check your API key and base URL configuration.")
+                
+        elif self.provider == "gpt_oss_local":
+            try:
+                # Convert messages to prompt format for local server
+                if len(messages) == 1:
+                    prompt = messages[0]["content"]
+                else:
+                    # Combine system and user messages
+                    system_msg = next((m["content"] for m in messages if m["role"] == "system"), "")
+                    user_msg = next((m["content"] for m in messages if m["role"] == "user"), "")
+                    prompt = f"{system_msg}\n\n{user_msg}" if system_msg else user_msg
+                
+                payload = {
+                    "model": "Qwen/Qwen3-4B",
+                    "input": prompt,
+                    "temperature": temperature,
+                    # "top_p":0.9,
+                    # "max_tokens" : max_tokens,
+                    "max_output_tokens": max_tokens,
+                    "stream": False
+                }
+                
+                response = requests.post(
+                    f"{self.base_url}/v1/responses",
+                    json=payload,
+                    headers={"Content-Type": "application/json"},
+                    timeout=self.timeout,
+                    stream=True
+                )
+                
+                response.raise_for_status()
+                import json as json_lib
+               
+
+                def _read_responses_stream(r):
+                    """
+                    Parse /v1/responses streaming SSE.
+                    Returns the concatenated text (incremental + fallback snapshot).
+                    """
+                    generated = []
+                    snapshot_text = None  # from response.content_part.done or response.completed
+
+                    # 关键：让 iter_lines 返回 str 而不是 bytes
+                    for line in r.iter_lines(decode_unicode=True):
+                        if not line:
+                            continue
+                        if not line.startswith("data: "):
+                            continue
+
+                        data_str = line[6:].strip()
+                        if data_str == "[DONE]":
+                            break
+
+                        try:
+                            evt = json_lib.loads(data_str)
+                        except Exception:
+                            continue
+
+                        t = evt.get("type")
+
+                        # 1) 增量文本
+                        if t == "response.output_text.delta":
+                            delta = evt.get("delta", "")
+                            if delta:
+                                generated.append(delta)
+
+                        # 2) 某些实现会在 done 事件里给整段 text（可用作补丁）
+                        elif t == "response.output_text.done":
+                            txt = evt.get("text")
+                            if txt:
+                                snapshot_text = txt  # 作为兜底
+
+                        # 3) content_part.done 里也可能带整段 text
+                        elif t == "response.content_part.done":
+                            part = evt.get("part") or {}
+                            txt = part.get("text")
+                            if txt:
+                                snapshot_text = txt
+
+                        # 4) 最后 completed 事件通常带完整 response 快照
+                        elif t == "response.completed":
+                            resp = evt.get("response") or {}
+                            out = resp.get("output") or []
+                            if out and isinstance(out, list):
+                                content = (out[0] or {}).get("content") or []
+                                if content and isinstance(content, list):
+                                    txt = (content[0] or {}).get("text")
+                                    if txt:
+                                        snapshot_text = txt
+                            break
+
+                        # 5) 错误事件（可选）
+                        elif t == "response.error":
+                            raise RuntimeError(evt.get("error", "unknown error"))
+
+                        # 其余事件：response.created / in_progress / output_item.added / content_part.added 等可忽略
+
+                    # 优先返回增量拼接；如果为空则用快照兜底
+                    text = "".join(generated).strip()
+                    if not text and snapshot_text:
+                        text = snapshot_text.strip()
+                    return text
+
+                # Handle streaming response
+                generated_text = _read_responses_stream(response)
+
+                
+                return generated_text.strip()
+                
+            except Exception as e:
+                print(f"Local GPT OSS API call failed: {e}")
+                print(f"Model: {self.model}, Base URL: {self.base_url}")
+                raise RuntimeError(f"Local GPT OSS API error: {e}. Check if your local server is running on {self.base_url}.")
 
 # ─────────────────────────────── Provider Configuration Helpers ────────────────────────────────
 def get_provider_config(provider: str) -> Dict:
@@ -113,6 +239,8 @@ def get_provider_config(provider: str) -> Dict:
             "model": "gpt-4o",
             "temperature": 0.2,
             "max_tokens": 16384,
+            "retry_attempts": 20,
+            "timeout": 30.0,
         }
     elif provider.lower() == "gemini":
         return {
@@ -120,6 +248,8 @@ def get_provider_config(provider: str) -> Dict:
             "model": "gemini-1.5-pro",
             "temperature": 0.2,
             "max_tokens": 8192,
+             "retry_attempts": 20,
+            "timeout": 30.0,
         }
     elif provider.lower() == "qwen":
         return {
@@ -127,10 +257,22 @@ def get_provider_config(provider: str) -> Dict:
             "model": "qwen-plus",  # Model Studio models: qwen-plus, qwen-max, qwen-turbo
             "temperature": 0.2,
             "max_tokens": 8192,
-            "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+            "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+            "retry_attempts": 20,
+            "timeout": 30.0,
+        }
+    elif provider.lower() == "gpt_oss_local":
+        return {
+            "provider": "gpt_oss_local",
+            "model": "openai/gpt-oss-20b",  # Local transformers model
+            "temperature": 0.2,
+            "max_tokens": 20000,
+            "base_url": "http://localhost:8000",
+            "retry_attempts": 20,
+            "timeout": 30,
         }
     else:
-        raise ValueError(f"Unsupported provider: {provider}. Supported: openai, gemini, qwen")
+        raise ValueError(f"Unsupported provider: {provider}. Supported: openai, gemini, qwen, gpt_oss_local")
 
 # ─────────────────────────────── helpers ────────────────────────────────
 _PDDL_HEADER = """\
@@ -282,6 +424,7 @@ class PDDLEffectVectorGenerator():
             "timeout": 30.0,
             **(llm_cfg or {}),
         }
+        self.cfg = get_provider_config("gpt_oss_local")
         
         # Get API key based on provider
         provider = self.cfg["provider"].lower()
@@ -297,6 +440,8 @@ class PDDLEffectVectorGenerator():
             api_key = self.cfg.get("api_key") or os.getenv("QWEN_API_KEY")
             if not api_key:
                 raise RuntimeError("QWEN_API_KEY not set.")
+        elif provider == "gpt_oss_local":
+            api_key = "dummy"  # Local server doesn't need real API key
         else:
             raise ValueError(f"Unsupported provider: {provider}")
             
@@ -655,6 +800,7 @@ class LLMEffectVectorGenerator:
             "timeout": 30.0,
             **(llm_cfg or {}),
         }
+        self.cfg = get_provider_config("gpt_oss_local")
         
         # Get API key based on provider
         provider = self.cfg["provider"].lower()
@@ -670,6 +816,8 @@ class LLMEffectVectorGenerator:
             api_key = self.cfg.get("api_key") or os.getenv("QWEN_API_KEY")
             if not api_key:
                 raise RuntimeError("QWEN_API_KEY not set.")
+        elif provider == "gpt_oss_local":
+            api_key = "dummy"  # Local server doesn't need real API key
         else:
             raise ValueError(f"Unsupported provider: {provider}")
             
@@ -885,6 +1033,7 @@ class LLMEffectVectorGenerator:
                 vec = self._parse(reply)
                 if vec is not None:
                     return vec
+                time.sleep(1)
             except Exception as e:
                 logging.warning("LLM primary mode error: %s", e)
                 time.sleep(1)
