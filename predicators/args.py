@@ -53,4 +53,8 @@ def create_arg_parser(env_required: bool = True,
                         const=logging.DEBUG,
                         default=logging.INFO)
     parser.add_argument("--crash_on_failure", action="store_true")
+    parser.add_argument("--online_planning", action="store_true", 
+                        help="Enable online planning mode - input object state, get plan output")
+    parser.add_argument("--state_input", type=str, default="",
+                        help="JSON string or file path containing object-centric state for online planning")
     return parser

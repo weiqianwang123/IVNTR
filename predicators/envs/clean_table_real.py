@@ -71,7 +71,7 @@ class TableCleanEnv(BaseEnv):
         self._TableClean = Predicate("table_clean", [self._table_type], self._TableClean_holds)
         
         # Goal achievement predicate
-        self._GoalAchieved = Predicate("goalAchieved", [], self._GoalAchieved_holds)
+        self._GoalAchieved = Predicate("goalAchieved", [self._robot_type], self._GoalAchieved_holds)
         
         # Static objects
         self._robot = Object("robot", self._robot_type)
@@ -465,8 +465,15 @@ class TableCleanEnv(BaseEnv):
         return False  # No table found
     
     def _GoalAchieved_holds(self, state: State, objects: Sequence[Object]) -> bool:
-        # Check if overall goal has been achieved (stored in robot state)
-        return state.get(self._robot, "goal_achieved") > 0.5
+        # Check if overall goal has been achieved
+        # Find the robot object in the state (since self._robot might not match after serialization)
+        for obj in state:
+            if obj.type == self._robot_type:
+                print("Robot found in state for goal check.")
+                print(f"Goal achieved value: {state.get(obj, 'goal_achieved')}")
+                return state.get(obj, "goal_achieved") > 0.5
+        print("Robot object not found in state for goal check.")
+        return False  # No robot found
 
     def _get_tasks(self,
                 num_tasks: int,
@@ -566,7 +573,7 @@ class TableCleanEnv(BaseEnv):
                 wipers.append(wiper)
             
             # Only goal is to achieve the overall goal
-            goal.add(GroundAtom(self._GoalAchieved, []))
+            goal.add(GroundAtom(self._GoalAchieved, [self._robot]))
 
             # Create state and task
             state = utils.create_state_from_dict(state_dict)
@@ -574,19 +581,261 @@ class TableCleanEnv(BaseEnv):
 
         return tasks
 
-    @classmethod
-    def get_held_object(cls, state: State) -> Optional[Object]:
-        """Get the object currently being held, if any."""
-        if state.get(cls._robot, "handempty") > 0.5:
-            return None
+   
+
+
+class TableCleanRealEnv(BaseEnv):
+    # Environment parameters (needed for action space)
+    table_lx: ClassVar[float] = -5.0
+    table_ly: ClassVar[float] = -5.0
+    table_ux: ClassVar[float] = 5.0
+    table_uy: ClassVar[float] = 5.0
+    
+    dino_feature_dim: ClassVar[int] = 1024  
+    
+    _robot_type = Type("robot", ["goal_achieved"]+[f"dino_{i}" for i in range(dino_feature_dim)])
+    _toy_type = Type("toy", [f"dino_{i}" for i in range(dino_feature_dim)])
+    _wiper_type = Type("wiper", [f"dino_{i}" for i in range(dino_feature_dim)])
+    _box_type = Type("box", [f"dino_{i}" for i in range(dino_feature_dim)])
+    _table_type = Type("table", [f"dino_{i}" for i in range(dino_feature_dim)])
+
+
+    def __init__(self, use_gui: bool = True) -> None:
+        super().__init__(use_gui)
+
+        # Predicates based on PDDL specification
+        self._ToyOnTable = Predicate("toy_on_table", [self._toy_type,self._table_type], self._ToyOnTable_holds)
+        self._HandEmpty = Predicate("handempty", [self._robot_type], self._HandEmpty_holds)
+        self._HoldingToy = Predicate("holdingToy", [self._robot_type,self._toy_type], self._HoldingToy_holds)
+        self._ToyInBox = Predicate("toy_in_box", [self._toy_type,self._box_type], self._ToyInBox_holds)
         
-        # Check toys and wipers to see which one is being held
+        self._WiperInBox = Predicate("wiper_in_box", [self._wiper_type,self._box_type], self._WiperInBox_holds)
+        self._WiperOnTable = Predicate("wiper_on_table", [self._wiper_type,self._table_type], self._WiperOnTable_holds)
+        self._HoldingWiper = Predicate("holdingWiper", [self._robot_type,self._wiper_type], self._HoldingWiper_holds)
+        
+        self._BoxAtCenter = Predicate("box_at_center", [self._box_type,self._table_type], self._BoxAtCenter_holds)
+        self._BoxAtSide = Predicate("box_at_side", [self._box_type,self._table_type], self._BoxAtSide_holds)
+        
+        self._NoToyAtTable = Predicate("No_toy_at_table", [], self._NoToyAtTable_holds)
+        self._TableClean = Predicate("table_clean", [self._table_type], self._TableClean_holds)
+        
+        # Goal achievement predicate
+        self._GoalAchieved = Predicate("goalAchieved", [self._robot_type], self._GoalAchieved_holds)
+        
+        # Static objects
+        self._robot = Object("robot", self._robot_type)
+
+
+    @classmethod
+    def get_name(cls) -> str:
+        return "clean-table-real-real"
+
+    # ----------------------------------------------------------------------
+    # PLACEHOLDER SIMULATION (no-ops except action 9 toggles goal_achieved)
+    # ----------------------------------------------------------------------
+    def simulate(self, state: State, action: Action) -> State:
+        assert self.action_space.contains(action.arr)
+        next_state = state.copy()
+        action_type, x, y = action.arr
+        action_type = int(round(float(action_type)))
+
+        if action_type == 9:
+            # Achieve goal: set robot's goal_achieved to 1.0
+            next_state.set(self._robot, "goal_achieved", 1.0)
+            return next_state
+
+        # All other actions are no-ops in this placeholder env
+        return state
+
+    # Simple train/test task generators delegating to _get_tasks
+    def _generate_train_tasks(self) -> List[EnvironmentTask]:
+        return self._get_tasks(
+            num_tasks=CFG.num_train_tasks,
+            num_toys_lst=[2],
+            num_wipers_lst=[1],
+            rng=self._train_rng
+        )
+
+    def _generate_test_tasks(self) -> List[EnvironmentTask]:
+        return self._get_tasks(
+            num_tasks=CFG.num_test_tasks,
+            num_toys_lst=[3],
+            num_wipers_lst=[2],
+            rng=self._test_rng
+        )
+
+    @property
+    def predicates(self) -> Set[Predicate]:
+        return {
+            self._ToyOnTable, self._HandEmpty, self._HoldingToy, self._ToyInBox,
+            self._WiperInBox, self._WiperOnTable, self._HoldingWiper,
+            self._BoxAtCenter, self._BoxAtSide, self._NoToyAtTable, self._TableClean,
+            self._GoalAchieved
+        }
+
+    @property
+    def goal_predicates(self) -> Set[Predicate]:
+        return { self._GoalAchieved }
+
+    @property
+    def types(self) -> Set[Type]:
+        return { self._robot_type, self._toy_type, self._wiper_type, self._box_type, self._table_type }
+
+    @property
+    def derived_predicates(self) -> List[str]:
+        return [
+            "(:derived (No_toy_at_table)\n    (forall (?t - toy ?tb - table) (not (toy_on_table ?t ?tb))))"
+        ]
+
+    @property
+    def action_space(self) -> Box:
+        return Box(
+            np.array([0, self.table_lx, self.table_ly], dtype=np.float32),
+            np.array([9, self.table_ux, self.table_uy], dtype=np.float32),
+        )
+
+    # Placeholder renderer: return an empty figure
+    def render_state_plt(
+        self,
+        state: State,
+        task: EnvironmentTask,
+        action: Optional[Action] = None,
+        caption: Optional[str] = None
+    ) -> matplotlib.figure.Figure:
+        return matplotlib.figure.Figure()
+
+    # ----------------------------------------------------------------------
+    # PLACEHOLDER ACTION HELPERS (no-ops) + achieve_goal sets the flag
+    # ----------------------------------------------------------------------
+    def _pick_toy_from_table(self, state: State, next_state: State, toys: List[Object], x: float = 0.0, y: float = 0.0) -> State:
+        return state
+
+    def _place_toy_to_box(self, state: State, next_state: State, toys: List[Object], boxes: List[Object]) -> State:
+        return state
+
+    def _pick_wiper_from_box(self, state: State, next_state: State, wipers: List[Object], boxes: List[Object]) -> State:
+        return state
+
+    def _pick_wiper_from_table(self, state: State, next_state: State, wipers: List[Object], x: float = 0.0, y: float = 0.0) -> State:
+        return state
+
+    def _place_wiper_at_table(self, state: State, next_state: State, wipers: List[Object], x: float = 0.0, y: float = 0.0) -> State:
+        return state
+
+    def _place_wiper_to_box(self, state: State, next_state: State, wipers: List[Object], boxes: List[Object]) -> State:
+        return state
+
+    def _push_box_out(self, state: State, next_state: State, boxes: List[Object]) -> State:
+        return state
+
+    def _pull_box_in(self, state: State, next_state: State, boxes: List[Object]) -> State:
+        return state
+
+    def _wipe_table(self, state: State, next_state: State, wipers: List[Object], toys: List[Object], boxes: List[Object], tables: List[Object]) -> State:
+        return state
+
+    def _achieve_goal(self, state: State, next_state: State, toys: List[Object], wipers: List[Object], boxes: List[Object]) -> State:
+        next_state.set(self._robot, "goal_achieved", 1.0)
+        return next_state
+
+    # ----------------------------------------------------------------------
+    # PLACEHOLDER PREDICATES (keep your simple returns), only goal works
+    # ----------------------------------------------------------------------
+    @staticmethod
+    def _ToyOnTable_holds(state: State, objects: Sequence[Object]) -> bool:
+        return False
+
+    @staticmethod
+    def _HandEmpty_holds(state: State, objects: Sequence[Object]) -> bool:
+        return False
+
+    def _HoldingToy_holds(self, state: State, objects: Sequence[Object]) -> bool:
+        return False
+
+    @staticmethod
+    def _ToyInBox_holds(state: State, objects: Sequence[Object]) -> bool:
+        return False
+
+    @staticmethod
+    def _WiperInBox_holds(state: State, objects: Sequence[Object]) -> bool:
+        return False
+
+    @staticmethod
+    def _WiperOnTable_holds(state: State, objects: Sequence[Object]) -> bool:
+        return False
+
+    def _HoldingWiper_holds(self, state: State, objects: Sequence[Object]) -> bool:
+        return False
+
+    @staticmethod
+    def _BoxAtCenter_holds(state: State, objects: Sequence[Object]) -> bool:
+        return False
+
+    @staticmethod
+    def _BoxAtSide_holds(state: State, objects: Sequence[Object]) -> bool:
+        return False
+
+    def _NoToyAtTable_holds(self, state: State, objects: Sequence[Object]) -> bool:
+        return False
+
+    def _TableClean_holds(self, state: State, objects: Sequence[Object]) -> bool:
+        return False
+
+    def _GoalAchieved_holds(self, state: State, objects: Sequence[Object]) -> bool:
+        # Find the robot of the correct type and read its flag
         for obj in state:
-            if obj.type in (cls._toy_type, cls._wiper_type):
-                on_table = state.get(obj, "on_table") > 0.5
-                in_box = state.get(obj, "in_box") > 0.5
-                if not on_table and not in_box:
-                    return obj
-        return None
+            if obj.type == self._robot_type:
+                return state.get(obj, "goal_achieved") > 0.5
+        return False
 
+    # ----------------------------------------------------------------------
+    # PLACEHOLDER TASK GENERATOR (objects with only DINO features)
+    # ----------------------------------------------------------------------
+    def _get_tasks(
+        self,
+        num_tasks: int,
+        num_toys_lst: List[int],
+        num_wipers_lst: List[int],
+        rng: np.random.Generator
+    ) -> List[EnvironmentTask]:
+        tasks: List[EnvironmentTask] = []
 
+        def _rand_dino() -> np.ndarray:
+            return rng.random(self.dino_feature_dim, dtype=float)
+
+        for _ in range(num_tasks):
+            state_dict: Dict[Object, Dict[str, float]] = {}
+
+            # Robot with goal flag and DINO
+            state_dict[self._robot] = {
+                "goal_achieved": 0.0,
+                **{f"dino_{i}": v for i, v in enumerate(_rand_dino())}
+            }
+
+            # One table
+            table = Object("table0", self._table_type)
+            state_dict[table] = {f"dino_{i}": v for i, v in enumerate(_rand_dino())}
+
+            # One box
+            box = Object("box0", self._box_type)
+            state_dict[box] = {f"dino_{i}": v for i, v in enumerate(_rand_dino())}
+
+            # Toys
+            num_toys = num_toys_lst[0]
+            for j in range(num_toys):
+                toy = Object(f"toy{j}", self._toy_type)
+                state_dict[toy] = {f"dino_{i}": v for i, v in enumerate(_rand_dino())}
+
+            # Wipers
+            num_wipers = num_wipers_lst[0]
+            for j in range(num_wipers):
+                wiper = Object(f"wiper{j}", self._wiper_type)
+                state_dict[wiper] = {f"dino_{i}": v for i, v in enumerate(_rand_dino())}
+
+            # Goal: achieve goal
+            goal: Set[GroundAtom] = {GroundAtom(self._GoalAchieved, [self._robot])}
+
+            state = utils.create_state_from_dict(state_dict)
+            tasks.append(EnvironmentTask(state, goal))
+
+        return tasks

@@ -77,7 +77,7 @@ class OracleClusteringSTRIPSLearner(BaseSTRIPSLearner):
             datastore = self._compute_datastores_given_nsrt(nsrt)
             pnad = PNAD(nsrt.op, datastore, option_spec)
             add_effects = self._induce_add_effects_by_intersection(pnad)
-            preconditions = self._induce_preconditions_via_intersection(pnad)
+            preconditions = self._induce_preconditions(pnad)
             pnad = PNAD(
                 pnad.op.copy_with(preconditions=preconditions,
                                   add_effects=add_effects), datastore,

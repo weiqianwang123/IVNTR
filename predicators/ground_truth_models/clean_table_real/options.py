@@ -32,7 +32,7 @@ class CleanTableRealGroundTruthOptionFactory(GroundTruthOptionFactory):
         # PickToyFromTable: robot + toy -> action_type=0, x, y
         PickToyFromTable = utils.SingletonParameterizedOption(
             "PickToyFromTable",
-            types=[robot_type, toy_type],
+            types=[robot_type,toy_type,table_type],
             params_space=Box(0, 10, (3,)),  # action_type, x, y
             policy=cls._create_pick_toy_from_table_policy())
 
@@ -51,39 +51,39 @@ class CleanTableRealGroundTruthOptionFactory(GroundTruthOptionFactory):
         # PickWiperFromTable: robot + wiper -> action_type=3, x, y
         PickWiperFromTable = utils.SingletonParameterizedOption(
             "PickWiperFromTable",
-            types=[robot_type, wiper_type],
+            types=[robot_type, wiper_type,table_type],
             params_space=Box(0, 10, (3,)),  # action_type, x, y
             policy=cls._create_pick_wiper_from_table_policy())
 
         # PlaceWiperAtTable: robot + wiper -> action_type=4, x, y
         PlaceWiperAtTable = utils.SingletonParameterizedOption(
             "PlaceWiperAtTable",
-            types=[robot_type, wiper_type],
+            types=[robot_type, wiper_type,table_type],
             params_space=Box(-10, 10, (3,)),  # action_type, x, y
             policy=cls._create_place_wiper_at_table_policy())
 
-        # PlaceWiperToBox: robot + wiper + box -> action_type=5
-        PlaceWiperToBox = utils.SingletonParameterizedOption(
-            "PlaceWiperToBox",
-            types=[robot_type, wiper_type, box_type],
-            policy=cls._create_place_wiper_to_box_policy())
+        # # PlaceWiperToBox: robot + wiper + box -> action_type=5
+        # PlaceWiperToBox = utils.SingletonParameterizedOption(
+        #     "PlaceWiperToBox",
+        #     types=[robot_type, wiper_type, box_type],
+        #     policy=cls._create_place_wiper_to_box_policy())
 
         # PushBoxOut: robot + box -> action_type=6
         PushBoxOut = utils.SingletonParameterizedOption(
             "PushBoxOut",
-            types=[robot_type, box_type],
+            types=[robot_type, box_type,table_type],
             policy=cls._create_push_box_out_policy())
 
         # PullBoxIn: robot + box -> action_type=7
         PullBoxIn = utils.SingletonParameterizedOption(
             "PullBoxIn",
-            types=[robot_type, box_type],
+            types=[robot_type, box_type,table_type],
             policy=cls._create_pull_box_in_policy())
 
         # WipeTable: robot + wiper + box + table -> action_type=8
         WipeTable = utils.SingletonParameterizedOption(
             "WipeTable",
-            types=[robot_type, wiper_type, box_type, table_type],
+            types=[robot_type, wiper_type,table_type],
             policy=cls._create_wipe_table_policy())
 
         # AchieveGoal: robot + table -> action_type=9
@@ -93,7 +93,7 @@ class CleanTableRealGroundTruthOptionFactory(GroundTruthOptionFactory):
             policy=cls._create_achieve_goal_policy())
 
         return {PickToyFromTable, PlaceToyToBox, PickWiperFromBox, PickWiperFromTable,
-                PlaceWiperAtTable, PlaceWiperToBox, PushBoxOut, PullBoxIn, WipeTable, AchieveGoal}
+                PlaceWiperAtTable, PushBoxOut, PullBoxIn, WipeTable, AchieveGoal}
 
     @classmethod
     def _create_pick_toy_from_table_policy(cls) -> ParameterizedPolicy:

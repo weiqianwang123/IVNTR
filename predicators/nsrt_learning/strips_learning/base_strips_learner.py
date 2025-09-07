@@ -318,6 +318,58 @@ class BaseSTRIPSLearner(abc.ABC):
             else:
                 preconditions &= lifted_atoms
         return preconditions
+    
+    @staticmethod
+    def _induce_preconditions_via_majority_vote(pnad: PNAD, threshold: float = 0.5) -> Set[LiftedAtom]:
+        """Given a PNAD with a nonempty datastore, compute the preconditions
+        for the PNAD's operator using majority voting over lifted preimages.
+        
+        Args:
+            pnad: PNAD with datastore of segments
+            threshold: Minimum fraction of segments that must contain an atom
+                      for it to be included as a precondition (default 0.5)
+        """
+        assert len(pnad.datastore) > 0
+        from collections import defaultdict
+        
+        # Count occurrences of each lifted atom across all segments
+        atom_counts = defaultdict(int)
+        total_segments = len(pnad.datastore)
+        
+        for segment, var_to_obj in pnad.datastore:
+            objects = set(var_to_obj.values())
+            obj_to_var = {o: v for v, o in var_to_obj.items()}
+            atoms = {
+                atom
+                for atom in segment.init_atoms
+                if all(o in objects for o in atom.objects)
+            }
+            lifted_atoms = {atom.lift(obj_to_var) for atom in atoms}
+            
+            # Count each lifted atom in this segment
+            for lifted_atom in lifted_atoms:
+                atom_counts[lifted_atom] += 1
+        
+        # Select atoms that appear in at least threshold fraction of segments
+        min_count = int(threshold * total_segments)
+        preconditions = {
+            atom for atom, count in atom_counts.items()
+            if count >= min_count
+        }
+        
+        return preconditions
+
+    @staticmethod
+    def _induce_preconditions(pnad: PNAD) -> Set[LiftedAtom]:
+        """Unified method to induce preconditions based on configuration."""
+        from predicators.settings import CFG
+        
+        if CFG.strips_learner_precondition_method == "majority_vote":
+            return BaseSTRIPSLearner._induce_preconditions_via_majority_vote(
+                pnad, CFG.strips_learner_majority_threshold
+            )
+        else:  # Default to intersection
+            return BaseSTRIPSLearner._induce_preconditions_via_intersection(pnad)
 
     @staticmethod
     def _compute_pnad_delete_effects(pnad: PNAD) -> None:

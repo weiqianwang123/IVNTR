@@ -133,9 +133,8 @@ class ClusterAndIntersectSTRIPSLearner(ClusteringSTRIPSLearner):
     def _learn_pnad_preconditions(self, pnads: List[PNAD]) -> List[PNAD]:
         new_pnads = []
         for pnad in pnads:
-            preconditions = self._induce_preconditions_via_intersection(pnad)
-            # Since we are taking an intersection, we're guaranteed that the
-            # datastore can't change, so we can safely use pnad.datastore here.
+            preconditions = self._induce_preconditions(pnad)
+            # Since we are using precondition induction, we can safely use pnad.datastore here.
             new_pnads.append(
                 PNAD(pnad.op.copy_with(preconditions=preconditions),
                      pnad.datastore, pnad.option_spec))

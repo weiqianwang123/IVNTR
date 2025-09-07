@@ -242,7 +242,7 @@ class BackchainingSTRIPSLearner(GeneralToSpecificSTRIPSLearner):
             cur_itr_pnads_filtered = []
             for pnad in cur_itr_pnads_unfiltered:
                 if len(pnad.datastore) > 0:
-                    new_pre = self._induce_preconditions_via_intersection(pnad)
+                    new_pre = self._induce_preconditions(pnad)
                     # NOTE: this implicitly changes param_opt_to_nec_pnads
                     # as well, since we're directly modifying the PNAD objects.
                     pnad.op = pnad.op.copy_with(preconditions=new_pre)
@@ -405,8 +405,7 @@ class BackchainingSTRIPSLearner(GeneralToSpecificSTRIPSLearner):
                     # the datastores.
                     for nec_pnad in param_opt_to_nec_pnads[option.parent]:
                         if len(nec_pnad.datastore) > 0:
-                            pre = self._induce_preconditions_via_intersection(
-                                nec_pnad)
+                            pre = self._induce_preconditions(nec_pnad)
                             nec_pnad.op = nec_pnad.op.copy_with(
                                 preconditions=pre)
 

@@ -1,0 +1,24 @@
+{
+  "object_config": {
+    "toy": 2,
+    "robot gripper": 1,
+    "wiper": 1,
+    "box": 1
+  },
+  "box_threshold": 0.3,
+  "text_threshold": 0.25,
+  "timestamp": "20250902_010259",
+  "default_action_sequence": [
+    "PullBoxIn(robot1, box1)",
+    "PickWiperFromBox(robot1, wiper1, box1)",
+    "PlaceWiperAtTable(robot1, wiper1)",
+    "PushBoxOut(robot1, box1)",
+    "PickToyFromTable(robot1, toy1)",
+    "PlaceToyToBox(robot1, toy1, box1)",
+    "PickToyFromTable(robot1, toy2)",
+    "PlaceToyToBox(robot1, toy2, box1)",
+    "PickWiperFromTable(robot1, wiper1)",
+    "WipeTable(robot1, wiper1, table1)",
+    "AchieveGoal(robot1, table1)"
+  ]
+}

@@ -494,29 +494,38 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
         height = len(self.ae_row_names)
 
         assert channels <= 2, "Only support at most 2 channels"
-
+        logging.info("data size: {}".format(len(data)))
+        logging.info("first data: {}".format(data[:1]))
         # Read the data and pose "zero" constraints by comparing the continous states
         # **Type Constraints for Typed Predicates**
         # Distill intial constraints from transition data
         all_zero_ae_matrix = torch.zeros((height, width, channels), dtype=int)
         for state, _, state_, _, action, _ in data:
+            logging.info("Processing Action: {}".format(action.parent.name))
             action_index = self.ae_row_names.index(action.parent)
             operated_objs = action.objects
             for affected_obj in operated_objs:
                 s = state[affected_obj]
                 s_ = state_[affected_obj]
+                # logging.info("Action: {}, Affected Obj: {}, State: {}, Next State: {}".\
+                #               format(action.parent.name, affected_obj, s, s_))
                 diff = s_ - s
                 if not np.all(diff == 0):
+                    # logging.info("State Changed for Obj: {}, Diff: {}".format(affected_obj, diff))
                     for pred in columns:
                         arity = pred.arity
                         col_index = columns.index(pred)
                         if arity == 1:
                             types = pred.types
                             if types[0] == affected_obj.type:
+                                # logging.info("Predicate {} May be Changed by Action {}".\
+                                #              format(pred.name, action.parent.name))
                                 all_zero_ae_matrix[action_index, col_index, :] = 1
                         elif arity == 2:
                             types = pred.types
                             if types[0] == affected_obj.type or types[1] == affected_obj.type:
+                                # logging.info("Predicate {} May be Changed by Action {}".\
+                                #              format(pred.name, action.parent.name))
                                 all_zero_ae_matrix[action_index, col_index, :] = 1
         for row in range(height):
             if all_zero_ae_matrix[row].sum() == 0:
@@ -545,6 +554,7 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
             action_counts[action_index, :, :] += 1
             for at in atom_:
                 if at.predicate.arity not in [1, 2]:
+                    logging.info("Skip Predicate {} with Arity {}".format(at.predicate.name, at.predicate.arity))
                     continue
                 if at.predicate not in columns:
                     continue
@@ -564,15 +574,19 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                         pred_index = columns.index(at.predicate)
                         assert all_ae_matrix_dummy[action_index, pred_index, 0] >= 0, "Should be zero"
                         all_ae_matrix_dummy[action_index, pred_index, 1] += 1
+        
+        # logging.info("Initial AE Matrix\n{}".format(all_ae_matrix_dummy))
         # round the values to 0 or 1
         # some actions may not appear
         high_bar = CFG.neupi_given_pred_effect_thresh
         low_bar = 1 - CFG.neupi_given_pred_effect_thresh
         action_counts[action_counts == 0] = 1
         all_ae_matrix_dummy = all_ae_matrix_dummy / action_counts
+        # logging.info("Initial AE Matrix After Normalization\n{}".format(all_ae_matrix_dummy))
         all_ae_matrix_dummy[all_ae_matrix_dummy < 0] = -1
         all_ae_matrix_dummy[all_ae_matrix_dummy >= high_bar] = 1
         all_ae_matrix_dummy[(0 <= all_ae_matrix_dummy) & (all_ae_matrix_dummy < low_bar)] = 0
+        logging.info("Initial AE Matrix After Normalization\n{}".format(all_ae_matrix_dummy))
         # check all the matrix entries are -1 1 or 0
         assert ((all_ae_matrix_dummy == 0) | (all_ae_matrix_dummy == 1) \
                 | (all_ae_matrix_dummy == -1)).all(), "Should be -1 0 or 1, check data noise"
@@ -592,6 +606,7 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
 
         for col in range(width):
             pred_name = columns[col]
+            logging.info("Processing Provided Predicate Constraints: {}".format(pred_name.name))
             if all_ae_matrix_dummy[:, col].sum() == 0:
                 # this effect never appears
                 raise ValueError("This effect predicate never appears in data, bug!")
@@ -947,6 +962,7 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
             if not ll_traj.is_demo:
                 continue
             goal = self._train_tasks[ll_traj.train_task_idx].goal
+            logging.info("length of ll_traj: {}".format(len(ll_traj.states)))
             atoms_traj = []
             for segment in segment_traj:
                 state = segment.states[0]  # the segment's initial state
@@ -955,10 +971,19 @@ class BilevelLearningLLMApproach(NSRTLearningApproach):
                 state_ = segment.states[-1]  # the segment's final state
                 atoms_ = segment.final_atoms
                 action = segment.get_option()  # the segment's option
-                action_id = self.ae_row_names.index(action.parent)
-                self.option_appeared[action_id] = 1
+                try:
+                    action_id = self.ae_row_names.index(action.parent)
+                    self.option_appeared[action_id] = 1
+                except ValueError:
+                    logging.warning(f"Option {action.parent.name} not found in ae_row_names: {[opt.name for opt in self.ae_row_names]}")
+                    continue  # Skip this segment
                 action_arity = len(action.objects)
                 max_action_arity = max(max_action_arity, action_arity)
+                logging.info("Action: {}, Arity: {}".format(action.parent.name, action_arity))
+                # logging.info("State: {}".format(state))
+                # logging.info("Next State: {}".format(state_))
+                # logging.info("Init Atoms: {}".format(atoms))
+                # logging.info("Final Atoms: {}".format(atoms_))
                 data.append((state, atoms, state_, atoms_, action, '{}_{}'.format(action_id, action_arity)))
             atoms_traj.append(atoms_) # the last state atoms
             ground_atom_dataset.append((ll_traj, atoms_traj))

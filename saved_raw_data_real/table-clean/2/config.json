@@ -1,0 +1,11 @@
+{
+  "object_config": {
+    "toy": 2,
+    "robot gripper": 1,
+    "wiper": 1,
+    "box": 1
+  },
+  "box_threshold": 0.3,
+  "text_threshold": 0.25,
+  "timestamp": "20250902_012726"
+}

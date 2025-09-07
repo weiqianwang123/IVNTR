@@ -1,0 +1,13 @@
+{
+  "state": 5,
+  "object_type": "toy",
+  "object_idx": 1,
+  "bbox": [
+    435.0,
+    283.0,
+    639.0,
+    479.0
+  ],
+  "timestamp": "2025-09-02T01:37:29.919913",
+  "swap_note": "Swapped from toy_2 at 2025-09-02T01:37:40.788961"
+}

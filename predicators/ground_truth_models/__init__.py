@@ -188,6 +188,13 @@ def get_gt_options(env_name: str) -> Set[ParameterizedOption]:
         predicates = {p.name: p for p in env.predicates}
         options = CleanTableRealGroundTruthOptionFactory().get_options(
             env_name, types, predicates, env.action_space)
+    elif env_name == "clean-table-real-real":
+        from predicators.ground_truth_models.clean_table_real.options import \
+            CleanTableRealGroundTruthOptionFactory
+        types = {t.name: t for t in env.types}
+        predicates = {p.name: p for p in env.predicates}
+        options = CleanTableRealGroundTruthOptionFactory().get_options(
+            env_name, types, predicates, env.action_space)
     else:
         raise NotImplementedError("Ground-truth options not implemented for "
                                   f"env: {env_name}")

@@ -736,7 +736,7 @@ class GlobalSettings:
     grammar_search_max_demos = float("inf")
     grammar_search_max_nondemos = 50
     grammar_search_energy_based_temperature = 10.
-    grammar_search_task_planning_timeout = 1.0
+    grammar_search_task_planning_timeout = 10.0
     grammar_search_search_algorithm = "hill_climbing"  # hill_climbing or gbfs
     grammar_search_hill_climbing_depth = 0
     grammar_search_parallelize_hill_climbing = False
@@ -755,6 +755,10 @@ class GlobalSettings:
     grammar_search_vlm_atom_proposal_use_debug = False
     grammar_search_parallelize_vlm_labeling = True
     grammar_search_select_all_debug = False
+    
+    # Precondition learning method and threshold
+    strips_learner_precondition_method = "majority_vote"  # "intersection" or "majority_vote"
+    strips_learner_majority_threshold = 0.7  # For majority voting: min fraction of segments
     grammar_search_invent_geo_predicates_only = False
     grammar_search_early_termination_heuristic_thresh = 0.0
 
@@ -794,8 +798,8 @@ class GlobalSettings:
     neupi_entropy_entry_max = 1.0
     neupi_gt_ae_matrix = False
     neupi_aaai_metric = 'num_nodes_expanded'
-    neupi_w_negation = True
-    neupi_w_quantifiers = True
+    neupi_w_negation = False
+    neupi_w_quantifiers = False
     neupi_aaai_expected_nodes_upper_bound = 1e5
     domain_aaai_thresh = 1e6
     neupi_equ_dataset = 0.05
@@ -915,6 +919,10 @@ class GlobalSettings:
     # Dimensions for multimodal features
     image_feature_dim = 1024  # Flattened image feature dimension
     pcd_dim = 1024  # Number of points in point cloud
+    
+    # Online planning parameters
+    online_planning = False  # Enable online planning mode
+    state_input = ""  # JSON string or file path for object-centric state input
 
     @classmethod
     def get_arg_specific_settings(cls, args: Dict[str, Any]) -> Dict[str, Any]:

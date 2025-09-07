@@ -252,7 +252,7 @@ class PNADSearchSTRIPSLearner(GeneralToSpecificSTRIPSLearner):
         new_pnads = [p for p in new_pnads if p.datastore]
         # Add new preconditions.
         for pnad in new_pnads:
-            preconditions = self._induce_preconditions_via_intersection(pnad)
+            preconditions = self._induce_preconditions(pnad)
             pnad.op = pnad.op.copy_with(preconditions=preconditions)
         # Add delete and ignore effects.
         for pnad in new_pnads:

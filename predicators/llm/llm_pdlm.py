@@ -416,15 +416,15 @@ class PDDLEffectVectorGenerator():
         # ---------- env + LLM cfg ----------
         load_dotenv(".env.local")
         self.cfg = {
-            "provider": "qwen",  # Default provider
-            "model": "qwen-plus",
+            "provider": "openai",  # Default provider
+            "model": "gpt-4o",
             "temperature": 0.2,
             "max_tokens": 16384,
             "retry_attempts": 20,
             "timeout": 30.0,
             **(llm_cfg or {}),
         }
-        self.cfg = get_provider_config("gpt_oss_local")
+        # self.cfg = get_provider_config("gpt_oss_local")
         
         # Get API key based on provider
         provider = self.cfg["provider"].lower()
@@ -800,7 +800,7 @@ class LLMEffectVectorGenerator:
             "timeout": 30.0,
             **(llm_cfg or {}),
         }
-        self.cfg = get_provider_config("gpt_oss_local")
+        # self.cfg = get_provider_config("gpt_oss_local")
         
         # Get API key based on provider
         provider = self.cfg["provider"].lower()

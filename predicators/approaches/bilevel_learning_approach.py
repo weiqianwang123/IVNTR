@@ -1223,6 +1223,7 @@ class BilevelLearningApproach(NSRTLearningApproach):
             type0, type1 = curr_pred.types
             ent0, ent1 = ent_idx[0], ent_idx[1]
             action_objects = action.objects
+            # logging.info(f"Action objects: {action_objects}")
             action_ent = {
                 type0: [],
                 type1: []

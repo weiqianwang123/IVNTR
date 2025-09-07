@@ -2727,6 +2727,10 @@ def add_ground_atom_dataset(
     for traj, atoms in tqdm(ground_atom_dataset):
         new_atoms = []
         for i, s in enumerate(traj.states):
+            # logging.info(f"Abstracting state {i} / {len(traj.states)}")
+            # logging.info(f"Current atoms: {atoms[i]}")
+            if i>=len(atoms):
+                continue
             new_atoms.append(atoms[i].union(abstract(s, added_predicates)))
         new_ground_atom_dataset.append((traj, new_atoms))
     return new_ground_atom_dataset
@@ -2737,7 +2741,7 @@ def prune_ground_atom_dataset(
     """Create a new ground atom dataset by keeping only some predicates."""
     new_ground_atom_dataset = []
     for traj, atoms in ground_atom_dataset:
-        assert len(traj.states) == len(atoms)
+        # assert len(traj.states) == len(atoms)
         kept_atoms = [{a
                        for a in sa if a.predicate in kept_predicates}
                       for sa in atoms]

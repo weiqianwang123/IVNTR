@@ -1,0 +1,12 @@
+{
+  "state": 8,
+  "object_type": "robot gripper",
+  "object_idx": 1,
+  "bbox": [
+    508.0,
+    323.0,
+    639.0,
+    478.0
+  ],
+  "timestamp": "2025-09-02T02:50:44.754680"
+}

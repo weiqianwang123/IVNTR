@@ -4,7 +4,7 @@
     {
       "name": "goalAchieved",
       "arity": 0,
-      "types": [],
+      "types": ["robot"],
       "role": "goal",
       "effect_map": {
         "AchieveGoal": "add"

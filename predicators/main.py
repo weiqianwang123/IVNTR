@@ -59,7 +59,7 @@ from predicators.perception import create_perceiver
 from predicators.settings import CFG, get_allowed_query_type_names
 from predicators.structs import Dataset, InteractionRequest, \
     InteractionResult, Metrics, Response, Task, Video, \
-    LowLevelTask
+    LowLevelTask, State
 from predicators.teacher import Teacher, TeacherInteractionMonitorWithVideo
 
 # Load environment variables from .env file
@@ -278,12 +278,16 @@ def _run_pipeline(env: BaseEnv,
             results.update(offline_learning_metrics)
             _save_test_results(results, online_learning_cycle=i)
     else:
-        results = _run_testing(env, cogman)
-        results["num_offline_transitions"] = 0
-        results["num_online_transitions"] = 0
-        results["query_cost"] = 0.0
-        results["learning_time"] = 0.0
-        _save_test_results(results, online_learning_cycle=None)
+        # Check if online planning mode is requested
+        if CFG.online_planning:
+            _run_online_planning(env, cogman)
+        else:
+            results = _run_testing(env, cogman)
+            results["num_offline_transitions"] = 0
+            results["num_online_transitions"] = 0
+            results["query_cost"] = 0.0
+            results["learning_time"] = 0.0
+            _save_test_results(results, online_learning_cycle=None)
 
 
 def _generate_interaction_results(
@@ -518,6 +522,116 @@ def _run_testing(env: BaseEnv, cogman: CogMan, train_tasks=None) -> Metrics:
         metrics[f"avg_{metric_name}"] = (
             total / num_found_policy if num_found_policy > 0 else float("inf"))
     return metrics
+
+
+def _parse_object_state_input(state_input: str, env: BaseEnv) -> State:
+    """Parse object-centric state from JSON input."""
+    import json
+    from pathlib import Path
+    
+    # Try to load as file first, then as direct JSON string
+    try:
+        if Path(state_input).exists():
+            with open(state_input, 'r') as f:
+                state_data = json.load(f)
+        else:
+            state_data = json.loads(state_input)
+    except (json.JSONDecodeError, FileNotFoundError) as e:
+        raise ValueError(f"Invalid state input: {e}")
+    
+    return utils.create_state_from_dict(state_data)
+
+
+def _run_online_planning(env: BaseEnv, cogman: CogMan) -> None:
+    """Run online planning mode - input state, output plan."""
+    logging.info("=== ONLINE PLANNING MODE ===")
+    
+    if not CFG.state_input:
+        raise ValueError("Online planning requires --state_input argument")
+    
+    # Parse the input state
+    try:
+        input_state = _parse_object_state_input(CFG.state_input, env)
+        logging.info(f"Parsed input state with {len(input_state.data)} objects:")
+        for obj in input_state.data:
+            logging.info(f"  - {obj.name} ({obj.type.name})")
+    except Exception as e:
+        logging.error(f"Failed to parse state input: {e}")
+        return
+    
+    # Create a dummy goal (you might want to make this configurable)
+    # For clean-table-real environment, goal is typically table clean
+    goal_atoms = set()
+    for obj in input_state.data:
+        if obj.type.name == "table":
+            table_clean_pred = None
+            for pred in env.predicates:
+                if pred.name == "table_clean":
+                    table_clean_pred = pred
+                    break
+            if table_clean_pred:
+                goal_atoms.add(GroundAtom(table_clean_pred, [obj]))
+        elif obj.type.name == "robot":
+            goal_achieved_pred = None
+            for pred in env.predicates:
+                if pred.name == "goalAchieved":
+                    goal_achieved_pred = pred
+                    break
+            if goal_achieved_pred:
+                goal_atoms.add(GroundAtom(goal_achieved_pred, [obj]))
+    
+    if not goal_atoms:
+        logging.warning("No goal atoms generated, using empty goal")
+    
+    # Create a task
+    task = Task(input_state, goal_atoms)
+    
+    try:
+        # Solve the task to get a policy
+        logging.info("Running planning approach...")
+        policy = cogman._approach.solve(task, timeout=CFG.timeout)
+        
+        # Try to extract a plan by simulating the policy
+        logging.info("Extracting plan from policy...")
+        current_state = input_state
+        plan_actions = []
+        max_plan_length = 20  # Prevent infinite loops
+        
+        for step in range(max_plan_length):
+            if goal_atoms.issubset(utils.abstract(current_state, env.predicates)):
+                logging.info(f"Goal reached in {step} steps!")
+                break
+                
+            try:
+                action = policy(current_state)
+                plan_actions.append(action)
+                
+                # Try to simulate the action (if environment supports it)
+                try:
+                    next_state = env.simulate(current_state, action)
+                    current_state = next_state
+                    logging.info(f"Step {step+1}: {action}")
+                except Exception as sim_e:
+                    logging.warning(f"Could not simulate step {step+1}: {sim_e}")
+                    break
+                    
+            except Exception as policy_e:
+                logging.warning(f"Policy failed at step {step+1}: {policy_e}")
+                break
+        
+        # Output the plan
+        logging.info("=== GENERATED PLAN ===")
+        if plan_actions:
+            for i, action in enumerate(plan_actions, 1):
+                logging.info(f"Step {i}: {action}")
+        else:
+            logging.info("No actions generated")
+            
+        logging.info(f"Plan length: {len(plan_actions)} actions")
+        
+    except Exception as e:
+        logging.error(f"Planning failed: {e}")
+        logging.exception("Detailed error:")
 
 
 def _save_test_results(results: Metrics,

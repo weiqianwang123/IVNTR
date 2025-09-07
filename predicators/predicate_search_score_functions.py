@@ -23,6 +23,48 @@ from predicators.structs import GroundAtom, GroundAtomTrajectory, \
     STRIPSOperator, Task, _GroundSTRIPSOperator, ParameterizedOption
 
 
+def _visualize_plan_comparison(demo_atoms_sequence: Sequence[Set[GroundAtom]],
+                             plan_atoms_sequence: Sequence[Set[GroundAtom]], 
+                             demo_idx: int) -> None:
+    """Visualize demo plan vs generated plan for debugging and analysis."""
+    logging.info(f"\n=== PLAN VISUALIZATION (Demo {demo_idx}) ===")
+    
+    # Plan length comparison
+    demo_len = len(demo_atoms_sequence)
+    plan_len = len(plan_atoms_sequence)
+    logging.info(f"Demo length: {demo_len}, Generated plan length: {plan_len}")
+    
+    # Show step-by-step comparison
+    max_len = max(demo_len, plan_len)
+    for step in range(max_len):
+        logging.info(f"\n--- Step {step} ---")
+        
+        # Demo step
+        if step < demo_len:
+            demo_atoms = demo_atoms_sequence[step]
+            logging.info(f"Demo atoms ({len(demo_atoms)}): {sorted([str(a) for a in demo_atoms])}")
+        else:
+            logging.info("Demo: (no more steps)")
+            
+        # Generated plan step  
+        if step < plan_len:
+            plan_atoms = plan_atoms_sequence[step]
+            logging.info(f"Plan atoms ({len(plan_atoms)}): {sorted([str(a) for a in plan_atoms])}")
+            
+            # Show differences if both exist
+            if step < demo_len:
+                demo_only = demo_atoms - plan_atoms
+                plan_only = plan_atoms - demo_atoms
+                if demo_only:
+                    logging.info(f"  Only in demo: {sorted([str(a) for a in demo_only])}")
+                if plan_only:
+                    logging.info(f"  Only in plan: {sorted([str(a) for a in plan_only])}")
+        else:
+            logging.info("Plan: (no more steps)")
+    
+    logging.info("=== END PLAN VISUALIZATION ===\n")
+
+
 def create_score_function(
         score_function_name: str, initial_predicates: Set[Predicate],
         atom_dataset: List[GroundAtomTrajectory], candidates: Dict[Predicate,
@@ -381,6 +423,11 @@ class _OperatorBeliefScoreFunction(abc.ABC):
                 for idx, (_, plan_atoms_sequence,
                           metrics) in enumerate(generator):
                     assert goal.issubset(plan_atoms_sequence[-1])
+                    
+                    # Visualize demo vs generated plan (enable with --debug flag)
+                    if idx == 0:  # Only visualize first plan for each demo
+                        _visualize_plan_comparison(demo_atoms_sequence, plan_atoms_sequence, seen_demos-1)
+                    
                     # Estimate the probability that this skeleton is refinable.
                     refinement_prob = self._get_refinement_prob(
                         demo_atoms_sequence, plan_atoms_sequence)
@@ -404,6 +451,7 @@ class _OperatorBeliefScoreFunction(abc.ABC):
                 # Note if we failed to find any skeleton, the next lines add
                 # the upper bound with refinable_skeleton_not_found_prob = 1.0,
                 # so no special action is required.
+                logging.info("Warning: Task planning timed out or failed!")
                 pass
             # After exhausting the skeleton budget or timeout, we use this
             # probability to estimate a "worst-case" planning time, making the
@@ -776,6 +824,22 @@ class _TaskPlanningScoreFunction(_OperatorLearningBasedScoreFunction):
                                 strips_ops: List[STRIPSOperator],
                                 option_specs: List[OptionSpec]) -> float:
         del low_level_trajs, segmented_trajs  # unused
+        
+        # Log the predicate set being evaluated
+        logging.info(f"\n{'='*60}")
+        logging.info(f"EVALUATING PREDICATE SET")
+        logging.info(f"{'='*60}")
+        logging.info(f"Candidate predicates ({len(candidate_predicates)}):")
+        for pred in sorted(candidate_predicates, key=lambda p: p.name):
+            logging.info(f"  - {pred.name}")
+        logging.info(f"Initial predicates ({len(self._initial_predicates)}):")
+        for pred in sorted(self._initial_predicates, key=lambda p: p.name):
+            logging.info(f"  - {pred.name}")
+        logging.info(f"Total predicates: {len(candidate_predicates | self._initial_predicates)}")
+        logging.info(f"STRIPS operators ({len(strips_ops)}):")
+        for op in strips_ops:
+            logging.info(f"  - {op.name}")
+        
         score = 0.0
         node_expansion_upper_bound = 1e7
         for traj, _ in self._atom_dataset:
@@ -795,20 +859,39 @@ class _TaskPlanningScoreFunction(_OperatorLearningBasedScoreFunction):
                 ground_nsrts, candidate_predicates | self._initial_predicates,
                 objects)
             try:
-                _, _, metrics = next(
-                    task_plan(init_atoms,
+                logging.info(f"=== Planning attempt for trajectory {traj.train_task_idx} ===")
+                logging.info(f"Initial atoms ({len(init_atoms)}): {sorted([str(atom) for atom in init_atoms])}")
+                logging.info(f"Goal atoms ({len(traj_goal)}): {sorted([str(atom) for atom in traj_goal])}")
+                logging.info(f"Ground NSRTs ({len(ground_nsrts)}): {[nsrt.name for nsrt in ground_nsrts]}")
+                logging.info(f"Reachable atoms ({len(reachable_atoms)}): {len(reachable_atoms) > 0}")
+                logging.info(f"Goal subset of reachable: {traj_goal.issubset(reachable_atoms)}")
+                
+                plan_generator = task_plan(init_atoms,
                               traj_goal,
                               ground_nsrts,
                               reachable_atoms,
                               heuristic,
                               CFG.seed,
                               CFG.grammar_search_task_planning_timeout,
-                              max_skeletons_optimized=1))
+                              max_skeletons_optimized=1)
+                              
+                skeleton, atom_sequence, metrics = next(plan_generator)
+                
+                logging.info(f"=== PLANNING SUCCEEDED ===")
+                logging.info(f"Plan found with {len(skeleton)} actions:")
+                for i, action in enumerate(skeleton):
+                    logging.info(f"  Step {i+1}: {action}")
+                logging.info(f"Atoms sequence length: {len(atom_sequence)}")
+                
                 assert "num_nodes_expanded" in metrics
                 node_expansions = metrics["num_nodes_expanded"]
+                logging.info(f"Nodes expanded: {node_expansions}")
                 assert node_expansions < node_expansion_upper_bound
                 score += node_expansions
-            except (PlanningFailure, PlanningTimeout):
+            except (PlanningFailure, PlanningTimeout) as e:
+                logging.warning(f"=== PLANNING FAILED ===")
+                logging.warning(f"Planning failed for trajectory {traj.train_task_idx}: {type(e).__name__}: {e}")
+                logging.warning(f"Adding penalty score: {node_expansion_upper_bound}")
                 score += node_expansion_upper_bound
         return score
 
